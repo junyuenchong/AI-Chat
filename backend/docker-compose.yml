@@ -1,0 +1,80 @@
+# WHY: Shared image/env for the API and the ARQ worker.
+x-app: &app
+  build: .
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ai_chat}:${POSTGRES_PASSWORD:-ai_chat_pass}@postgres:5432/${POSTGRES_DB:-ai_chat}
+    REDIS_URL: redis://redis:6379/0
+    CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    # NOTE: pgvector image is required for DocumentChunk.embedding.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_chat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_chat_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_chat}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_chat} -d ${POSTGRES_DB:-ai_chat}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:4
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+
+  worker:
+    <<: *app
+    command: arq app.jobs.worker.WorkerSettings
+    volumes:
+      - ./app:/app/app
+
+volumes:
+  postgres_data:
+  redis_data:
