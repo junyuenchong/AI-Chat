@@ -1,73 +1,47 @@
-# c
+# AI Chat
 
-Full-stack portfolio chat: **Next.js UI** + **FastAPI** + **LangChain / RAG** (no LangGraph, no n8n).
+Full-stack portfolio chat: **Next.js** + **FastAPI** + **LangChain** (LLM/embeddings) + **RAG** (retrieve + answer).
 
-## What each piece does
+No LangGraph. No n8n.
 
+## LangChain vs RAG (read this first)
 
-| Piece         | Role                                                            |
-| ------------- | --------------------------------------------------------------- |
-| **LangChain** | AI components — prompts, LLM, embeddings, chunking              |
-| **RAG**       | Retriever finds Knowledge chunks, then LLM answers with context |
-| **FastAPI**   | HTTP API, JWT auth, SSE streaming                               |
-| **Next.js**   | Chat UI (auth, conversations, knowledge, stream)                |
-| **Postgres**  | Users, conversations, messages, documents + pgvector            |
-| **Redis/ARQ** | Rate limits + background summarize / embed jobs                 |
+| Layer | What it is | Uses LangChain? | Where |
+| --- | --- | --- | --- |
+| **LangChain** | AI model layer — prompts, chat LLM, embeddings, summarize | **Yes** | `backend/app/ai/llm`, `prompts`, `rag/embeddings.py` |
+| **RAG** | Retrieve Knowledge chunks → pass to LLM | **Partly** | `ai/rag/` (embeddings = LC; chunk/search = custom) |
+| **App** | HTTP, auth, DB, SSE, jobs | **No** | `api/`, `services/`, `db/`, `jobs/` |
 
+```
+Knowledge ingest:  Document → split (Python) → embed (LangChain) → pgvector (Postgres)
+Chat:              optional Retriever (SQL) → prompt + LLM (LangChain) → SSE
+```
 
-Gemini or OpenAI powers the same RAG chat flow. Empty API keys → demo streaming.
+Gemini or OpenAI when `GEMINI_API_KEY` / `OPENAI_API_KEY` is set. Empty keys → **demo** streaming (real HTTP, DB, SSE — mock LLM text).
 
 ## Domain glossary
 
-**Conversation** = user's chat history.  
-**Knowledge** = information the AI can retrieve from.
+**Conversation** = chat history. **Knowledge** = what the AI can retrieve.
 
+| Term | Meaning |
+| --- | --- |
+| **Conversation** | One chat thread (sidebar item) |
+| **Message** | One user or assistant turn |
+| **Chat** | AI call — stream or complete |
+| **Knowledge** | User's RAG document store |
+| **Document** | Uploaded source file (text) |
+| **Chunk** | Split piece of a document |
+| **Retriever** | Finds relevant chunks for a query |
+| **RAG** | Retriever + LLM (context-aware answer) |
 
-| Term             | Meaning                            |
-| ---------------- | ---------------------------------- |
-| **Conversation** | Chat history (one thread)          |
-| **Message**      | Individual chat turn               |
-| **Chat**         | AI interaction (stream / complete) |
-| **Knowledge**    | AI knowledge base                  |
-| **Document**     | Uploaded / source file             |
-| **Chunk**        | Split document content             |
-| **Retriever**    | Finds relevant knowledge           |
-| **RAG**          | Retrieved knowledge + LLM          |
-
-
-### Example
-
-User asks: *"What is our company's annual leave policy?"*
-
-```
-Conversation                          Knowledge
-└── Message                           └── company_handbook.pdf  (Document)
-      └── User: What is our company's       ├── Chunk 1
-          annual leave policy?              ├── Chunk 2  ← relevant
-                                            └── Chunk 3
-```
-
-```
-Conversation → Chat API → Retriever
-    → Knowledge / Vector Store → RAG → LLM → Assistant Message
-```
-
-```
-Knowledge → Document → Chunk
-Chat → Conversation → Message
-RAG = Retriever(Chunks) + LLM
-```
-
-Full backend detail: [backend/README.md](backend/README.md).
+**Example:** *"What is our annual leave policy?"* → Retriever picks a chunk from `company_handbook.pdf` → LangChain LLM answers using that context → saved as an assistant **Message** in the **Conversation**.
 
 ## Folders
 
-
-| Folder        | Role                                   |
-| ------------- | -------------------------------------- |
-| **backend/**  | FastAPI + AI + Postgres/Redis — Docker |
-| **frontend/** | Next.js chat UI — run locally with npm |
-
+| Folder | Role |
+| --- | --- |
+| [backend/](backend/) | FastAPI + AI + Postgres/Redis — Docker |
+| [frontend/](frontend/) | Next.js chat UI — npm locally |
 
 ## Quick start
 
@@ -82,40 +56,18 @@ npm install
 npm run dev
 ```
 
+| Service | URL |
+| --- | --- |
+| Chat UI | http://localhost:3000 |
+| OpenAPI | http://localhost:8000/docs |
+| Health | http://localhost:8000/api/v1/health |
+| Adminer | http://localhost:8080 |
 
-| Service | URL                                                                        |
-| ------- | -------------------------------------------------------------------------- |
-| Chat UI | [http://localhost:3000](http://localhost:3000)                             |
-| OpenAPI | [http://localhost:8000/docs](http://localhost:8000/docs)                   |
-| Health  | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) |
-| Adminer | [http://localhost:8080](http://localhost:8080)                             |
+Register or log in from the UI. No demo auto-login.
 
+## Docs
 
-Register or log in from the chat UI. There is no demo auto-login.
-
-Leave `GEMINI_API_KEY` empty for demo (no real LLM) streaming.
-
-## Backend layout
-
-```
-backend/app/
-  main.py
-  api/v1/      # HTTP: router + dto + mapping
-  core/        # config, security, errors, JWT deps
-  models/      # SQLAlchemy tables
-  db/          # session + SQL access
-  services/    # business logic
-  ai/          # llm, prompts, rag, chat flow
-  clients/     # Redis, ARQ
-  jobs/        # background worker + tasks
-```
-
-Flow: **API → Services → db/Models + AI (optional RAG → LLM)**.
-
-
-| Doc                                      | Contents                               |
-| ---------------------------------------- | -------------------------------------- |
-| [backend/README.md](backend/README.md)   | Architecture, workflows, Docker, tests |
-| [frontend/README.md](frontend/README.md) | UI layout, API proxy, SSE notes        |
-
-
+| File | Contents |
+| --- | --- |
+| [backend/README.md](backend/README.md) | Layout, workflows, Docker, tests |
+| [frontend/README.md](frontend/README.md) | UI, JSON proxy, SSE wiring |

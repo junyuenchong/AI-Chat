@@ -1,77 +1,66 @@
 # Next.js frontend
 
-Chat UI for the FastAPI backend. **No Docker** — run locally with npm.
+Chat UI for the FastAPI backend. **No Docker** — run with npm.
 
-Talks to the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`).
+## Stack (UI labels)
 
-## What it does
+| Pill / copy | Meaning |
+| --- | --- |
+| **LangChain** | Backend uses LC for LLM + embeddings (not chunking or SQL search) |
+| **RAG** | Retriever finds Knowledge chunks, then LLM answers |
+| **SSE** | `POST /api/v1/chat/stream` token stream |
 
-| Feature            | How                                                              |
-| ------------------ | ---------------------------------------------------------------- |
-| Auth               | Register / login → JWT in local storage                          |
-| Conversations      | Sidebar list + open thread (messages)                            |
-| Chat               | `POST /api/v1/chat/stream` SSE tokens                            |
-| Knowledge          | Upload document text → backend chunks + optional embed job       |
-| Health             | Status pills (Postgres / Redis / LLM provider)                   |
+**Conversation** = chat history sidebar. **Knowledge** = uploaded documents for RAG.
 
-Domain terms match the backend: **Conversation** = chat history, **Knowledge** = RAG documents.
+## Features
+
+| Area | API |
+| --- | --- |
+| Auth | `POST /api/v1/auth/register\|login` · JWT in localStorage |
+| Conversations | `GET /api/v1/conversations` |
+| Chat | `POST /api/v1/chat/stream` (SSE) |
+| Knowledge | `POST /api/v1/documents` |
+| Health | `GET /api/v1/health` |
 
 ## Layout
 
 ```
 src/
   app/
-    page.tsx                 # mounts ChatApp
-    layout.tsx
-    globals.css
-    api/v1/[...path]/route.ts  # JSON proxy (same-origin; avoids CORS)
-  components/
-    ChatApp.tsx              # auth + chat + knowledge UI
-  lib/
-    api.ts                   # fetch helpers + SSE reader
-    types.ts                 # Token, Conversation, Message, Health, …
+    page.tsx
+    api/v1/[...path]/route.ts   # JSON proxy → FastAPI
+  components/ChatApp.tsx        # main UI
+  lib/api.ts                    # fetch + SSE reader
+  lib/types.ts
 ```
 
 ## API wiring
 
-| Call type | Path helper     | Target                                              |
-| --------- | --------------- | --------------------------------------------------- |
-| JSON      | `apiUrl()`      | Browser → Next `/api/v1/…` proxy → FastAPI          |
-| SSE       | `streamUrl()`   | Browser → FastAPI directly (`NEXT_PUBLIC_API_URL`)  |
+| Type | Helper | Why |
+| --- | --- | --- |
+| JSON | `apiUrl()` | Browser → Next `/api/v1` proxy (no CORS) |
+| SSE | `streamUrl()` | Browser → FastAPI direct (proxy buffers streams) |
 
-SSE hits FastAPI directly because the Next.js proxy can buffer `text/event-stream` chunks.
-
-Chat uses `fetch` + streaming body (POST + Bearer JWT). Browser `EventSource` is GET-only, so it is not used.
+Chat uses `fetch` + readable stream (POST + Bearer). Not `EventSource` (GET-only).
 
 ## Quick start
 
-Start the API first from `../backend`:
-
 ```powershell
+# Terminal 1 — backend
 cd ..\backend
 Copy-Item .env.example .env
 docker compose up --build
-```
 
-Then the UI:
-
-```powershell
+# Terminal 2 — frontend
 Copy-Item .env.local.example .env.local
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000 and register or log in. There is no demo auto-login.
-
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
+Open http://localhost:3000 · register or log in (no demo auto-login).
 
 ## Env
 
-| Variable               | Default                   | Purpose                |
-| ---------------------- | ------------------------- | ---------------------- |
-| `NEXT_PUBLIC_API_URL`  | `http://localhost:8000`   | FastAPI base (SSE too) |
-
-Backend OpenAPI: http://localhost:8000/docs  
-Backend health: http://localhost:8000/api/v1/health
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | FastAPI base (JSON + SSE) |
