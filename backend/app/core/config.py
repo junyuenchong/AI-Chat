@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     llm_embedding_model: str = "text-embedding-3-small"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.6-flash"
+    gemini_fallback_model: str = ""
     gemini_embedding_model: str = "gemini-embedding-2"
 
     # When true and use_rag is on, refuse instead of falling back to general LLM knowledge.

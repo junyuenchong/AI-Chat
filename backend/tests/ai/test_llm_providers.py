@@ -1,23 +1,17 @@
-"""Unit tests for LangChain message building and demo LLM replies.
+"""Unit tests for LangChain message mapping and demo LLM replies."""
 
-No API keys and no database required.
-"""
-
-from app.infrastructure.llm.langchain_provider import build_lc_messages, demo_reply
-
-# ────────────────────────────────────────────────────────────
-# test_build_lc_messages_includes_system_and_user
-# Endpoint: POST /chat/stream, POST /chat/complete (internal)
-# Use: confirm messages include system prompt, RAG context, and user turn.
-# ────────────────────────────────────────────────────────────
+from app.application.chat.helpers import build_llm_messages
+from app.infrastructure.llm.demo.provider import demo_reply_text
+from app.infrastructure.llm.langchain.message_mapper import to_lc_messages
 
 
-def test_build_lc_messages_includes_system_and_user():
-    messages = build_lc_messages(
+def test_to_lc_messages_includes_system_and_user():
+    domain_messages = build_llm_messages(
         history=[("user", "hi"), ("assistant", "hello")],
         user_message="what is RAG?",
         rag_context="chunk about leave policy",
     )
+    messages = to_lc_messages(domain_messages)
     roles = [m.type for m in messages]
     assert roles[0] == "system"
     assert "chunk about leave policy" in messages[0].content
@@ -25,42 +19,22 @@ def test_build_lc_messages_includes_system_and_user():
     assert messages[-1].content == "what is RAG?"
 
 
-# ────────────────────────────────────────────────────────────
-# test_build_lc_messages_limits_history_window
-# Endpoint: POST /chat/stream, POST /chat/complete (internal)
-# Use: confirm only the last 12 history messages are sent to the LLM.
-# ────────────────────────────────────────────────────────────
-
-
-def test_build_lc_messages_limits_history_window():
+def test_to_lc_messages_limits_history_window():
     long_history = [("user", f"msg-{i}") for i in range(20)]
-    messages = build_lc_messages(long_history, "latest", None)
+    domain_messages = build_llm_messages(long_history, "latest", None)
+    messages = to_lc_messages(domain_messages)
     human_messages = [m for m in messages if m.type == "human"]
     assert len(human_messages) <= 13
 
 
-# ────────────────────────────────────────────────────────────
-# test_demo_reply_mentions_layers_without_rag
-# Endpoint: POST /chat/complete (internal — demo LLM mode)
-# Use: offline demo reply explains LangChain and RAG when no context is found.
-# ────────────────────────────────────────────────────────────
-
-
 def test_demo_reply_mentions_layers_without_rag():
-    text = demo_reply("hello", None)
+    text = demo_reply_text("hello", None)
     assert "Demo mode" in text
     assert "LangChain" in text
     assert "RAG" in text
 
 
-# ────────────────────────────────────────────────────────────
-# test_demo_reply_includes_rag_snippet_when_present
-# Endpoint: POST /chat/complete (internal — demo LLM mode)
-# Use: offline demo reply includes retrieved text when RAG context exists.
-# ────────────────────────────────────────────────────────────
-
-
 def test_demo_reply_includes_rag_snippet_when_present():
-    text = demo_reply("hello", "annual leave is 14 days")
+    text = demo_reply_text("hello", "annual leave is 14 days")
     assert "annual leave" in text
     assert "RAG context used" in text

@@ -13,6 +13,8 @@ from app.application.chat.helpers import (
     should_refuse_without_rag_context,
 )
 from app.core.config import get_settings
+from app.core.exceptions import LLMError
+from app.infrastructure.llm.errors import LLMProviderError
 
 
 def _ports(*, retriever=None, llm=None):
@@ -218,3 +220,37 @@ async def test_strict_rag_stream_refuses_without_calling_llm(strict_rag_mode):
     assert events[2][0] == "token"
     assert "knowledge base" in events[2][1].lower()
     llm.stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_streaming_maps_llm_provider_error_to_error_event():
+    async def failing_stream(_messages):
+        raise LLMProviderError("boom", user_message="LLM down")
+        yield ""  # pragma: no cover
+
+    llm = MagicMock()
+    llm.stream = failing_stream
+    retriever = AsyncMock()
+    retriever.retrieve = AsyncMock(return_value=None)
+
+    events = []
+    async for name, data in generate_streaming_tokens(
+        llm, retriever, "u", "hi", [], use_rag=False
+    ):
+        events.append((name, data))
+
+    assert ("error", "LLM down") in events
+    assert not any(name == "token" for name, _ in events)
+
+
+@pytest.mark.asyncio
+async def test_complete_maps_llm_provider_error_to_domain_error(hybrid_rag_mode):
+    llm = AsyncMock()
+    llm.complete = AsyncMock(
+        side_effect=LLMProviderError("boom", user_message="LLM down")
+    )
+    retriever = AsyncMock()
+    retriever.retrieve = AsyncMock(return_value=None)
+
+    with pytest.raises(LLMError, match="LLM down"):
+        await generate_full_reply(llm, retriever, "u", "hi", [], use_rag=True)

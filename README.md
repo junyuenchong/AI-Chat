@@ -80,8 +80,17 @@ Register or log in from the UI. There is no demo auto-login.
 
 | Configuration | Behavior |
 | --- | --- |
-| `GEMINI_API_KEY` or `OPENAI_API_KEY` set | Real LLM responses via LangChain |
-| Keys empty | **Demo mode** — real HTTP, database, and SSE; mock LLM text |
+| `GEMINI_API_KEY` or `OPENAI_API_KEY` set | Real LLM via `LangChainProvider` (with fallback chain) |
+| Keys empty | **Demo mode** — `DemoProvider`; real HTTP, DB, and SSE; mock LLM text |
+
+### RAG modes (`RAG_STRICT_MODE`)
+
+| Mode | Setting | No relevant KB hit |
+| --- | --- | --- |
+| **Strict RAG** | `true` | Refuse — no LLM call (good for internal knowledge bases) |
+| **Hybrid RAG** | `false` | Fall back to LLM general knowledge |
+
+Details: [backend/README.md](backend/README.md#llm-and-rag-architecture).
 
 ---
 
@@ -112,15 +121,17 @@ All routes are under `/api/v1`.
 ```
 Browser (Next.js)
     ↓  JSON + SSE (cookie session or Bearer JWT)
-FastAPI routers  →  application services  →  domain ports
+FastAPI routers  →  application services  →  domain ports (LLMPort, RetrieverPort)
                               ↓
-                    infrastructure (Postgres, Redis, LangChain, ARQ worker)
+                    infrastructure (Postgres, Redis, LLM adapters, ARQ worker)
 ```
 
 - **Routers** handle HTTP only.
-- **Application** layer contains business logic (`service.py`, `mapper.py`, `helpers.py`).
+- **Application** layer owns use-cases and prompt/RAG orchestration (`helpers.py`, `service.py`).
 - **Domain** defines entities and ports (`LLMPort`, `RetrieverPort`).
-- **Infrastructure** implements database, AI, cache, and background jobs.
+- **Infrastructure** implements adapters: `LangChainProvider`, `DemoProvider`, pgvector, Redis.
+
+**LLM error flow:** `LangChainProvider` → `LLMProviderError` → application → SSE `error` / HTTP `LLM_ERROR` (never mixed into token stream).
 
 Details: [backend/README.md](backend/README.md).
 

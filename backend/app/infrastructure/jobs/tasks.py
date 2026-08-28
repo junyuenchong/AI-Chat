@@ -15,7 +15,7 @@ from app.infrastructure.database.models.document import Document, DocumentChunk
 from app.infrastructure.database.repositories.document_repository import (
     DocumentRepository,
 )
-from app.infrastructure.llm.langchain_provider import summarize_messages
+from app.infrastructure.llm.factory import build_llm_port
 from app.infrastructure.vectorstore.embeddings import get_embeddings
 from app.infrastructure.vectorstore.retriever import split_text
 
@@ -46,7 +46,7 @@ async def summarize_conversation(ctx: dict, conversation_id: str) -> str:
             transcript = "\n".join(
                 f"{m.role}: {m.content}" for m in conversation.messages
             )
-            summary = await summarize_messages(transcript)
+            summary = await build_llm_port().summarize(transcript)
             conversation.summary = summary
             await db.commit()
 

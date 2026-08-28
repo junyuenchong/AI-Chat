@@ -12,8 +12,10 @@ from app.application.chat.prompts import (
     append_rag_context,
 )
 from app.core.config import get_settings
+from app.core.exceptions import LLMError
 from app.domain.chat.entities import ChatMessage, ChatResult
 from app.domain.chat.ports import LLMPort, RetrieverPort
+from app.infrastructure.llm.errors import LLMProviderError
 
 EMPTY_REPLY = "I could not generate a reply. Please try again."
 LLM_FAILURE = "The language model failed. Please try again."
@@ -101,12 +103,10 @@ async def generate_full_reply(
             "answer": STRICT_RAG_EMPTY_REPLY,
         }
     try:
-        # Build the prompt and ask the LLM for one full answer.
         messages = build_llm_messages(history, message, rag_context)
         answer = await llm.complete(messages)
-    except Exception:
-        # Return a friendly fallback if the model call fails.
-        answer = LLM_FAILURE
+    except LLMProviderError as exc:
+        raise LLMError(exc.user_message) from exc
     return {"route": route, "rag_context": rag_context, "answer": answer}
 
 
@@ -140,7 +140,9 @@ async def generate_streaming_tokens(
     if should_refuse_without_rag_context(use_rag, rag_context):
         yield ("token", STRICT_RAG_EMPTY_REPLY)
         return
-    # Build the prompt and stream tokens as they arrive from the LLM.
     messages = build_llm_messages(history, message, rag_context)
-    async for token in llm.stream(messages):
-        yield ("token", token)
+    try:
+        async for token in llm.stream(messages):
+            yield ("token", token)
+    except LLMProviderError as exc:
+        yield ("error", exc.user_message)

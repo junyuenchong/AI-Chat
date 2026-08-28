@@ -31,7 +31,7 @@ from app.infrastructure.database.repositories.document_repository import (
     DocumentRepository,
 )
 from app.infrastructure.database.repositories.user_repository import UserRepository
-from app.infrastructure.llm.langchain_provider import LangChainProvider
+from app.infrastructure.llm.factory import build_llm_port
 from app.infrastructure.llm.langchain_rag import LangChainRetriever
 
 # Kept for OpenAPI, tests, and programmatic clients.
@@ -84,7 +84,7 @@ async def get_current_user(
     return user
 
 
-_llm_provider = LangChainProvider()
+_llm_provider = build_llm_port()
 _retriever = LangChainRetriever()
 
 

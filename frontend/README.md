@@ -22,7 +22,7 @@ lib/           → shared HTTP client and SSE reader
 | `app/` | Route groups: `(auth)` for login/register, `(dashboard)` for chat and knowledge |
 | `features/` | Each feature owns `components/`, `api.ts`, `hooks.ts`, `types.ts` |
 | `components/ui/` | Shared Button, Input, Loading (Tailwind styled) |
-| `lib/` | Generic `apiJson`, `readSse`, `cn` utility |
+| `lib/` | Generic `apiJson`, `readSse`, `cn` utility; proxy returns 503 when API is down |
 
 ### Features
 
@@ -93,6 +93,23 @@ npm run dev
 ```
 
 Open **http://localhost:3000** → redirects to `/chat` (login required).
+
+The Next.js proxy at `src/app/api/v1/[...path]/route.ts` forwards cookies to FastAPI. If the backend is not running, API calls return **503** with a clear JSON error (not a generic 500).
+
+---
+
+## Chat streaming (SSE)
+
+The chat UI consumes Server-Sent Events from `POST /chat/stream`:
+
+| Event | UI behavior |
+| --- | --- |
+| `meta` | Updates `conversation_id` in sidebar |
+| `token` | Appends text to the assistant bubble |
+| `done` | Finalizes message and refreshes conversation list |
+| `error` | Shows LLM failure message (`code: LLM_ERROR`) — not mixed into tokens |
+
+Parsed in `features/chat/hooks.ts` via `lib/sse/reader.ts`.
 
 ---
 

@@ -201,7 +201,11 @@ app/
 │   ├── database/              SQLAlchemy 2.0 models + repositories
 │   │   ├── models/            ORM (Mapped, mapped_column)
 │   │   └── repositories/      AsyncSession data access
-│   ├── llm/                   LangChain LLM adapter (implements LLMPort)
+│   ├── llm/                   LLM adapters (implements LLMPort)
+│   │   ├── factory.py         build_llm_port() — Demo vs LangChain
+│   │   ├── errors.py          LLMProviderError (infrastructure)
+│   │   ├── langchain/         LangChain adapter + message mapper
+│   │   └── demo/              DemoProvider (offline mode)
 │   ├── vectorstore/           embeddings + pgvector retrieval (implements RetrieverPort)
 │   ├── cache/                 Redis, sessions
 │   ├── queue/                 ARQ queue + worker
@@ -235,6 +239,53 @@ infrastructure/        Postgres, Redis, llm/, vectorstore/
 
 **Rule:** Middleware handles **global HTTP** concerns only. Authentication and authorization live in `Depends(get_current_user)` — not in middleware.
 
+### LLM and RAG architecture
+
+**Dependency direction:**
+
+```
+API (router)
+    ↓
+Application (ChatService, helpers.py — prompt + RAG orchestration)
+    ↓
+LLMPort / RetrieverPort
+    ↑
+Infrastructure
+    ├── DemoProvider          (no API key)
+    └── LangChainProvider     (Gemini → fallback model → OpenAI)
+            ↓
+        LangChain → Gemini / OpenAI
+```
+
+| Component | Responsibility |
+| --- | --- |
+| `application/chat/helpers.py` | Build messages, fetch RAG context, strict/hybrid routing |
+| `application/chat/stream_events.py` | Map internal events → SSE frames (`meta`, `token`, `done`, `error`) |
+| `infrastructure/llm/langchain/provider.py` | Adapter only: `astream` / `ainvoke`, model fallback chain |
+| `infrastructure/llm/demo/provider.py` | Canned replies when no API key |
+| `infrastructure/llm/factory.py` | `build_llm_port()` — selects Demo vs LangChain |
+| `infrastructure/llm/errors.py` | `LLMProviderError` — mapped to `LLMError` / SSE in application |
+
+**LLM fallback chain** (when keys are set):
+
+1. Primary provider (`GEMINI_MODEL` or OpenAI)
+2. `GEMINI_FALLBACK_MODEL` (if set)
+3. Cross-provider OpenAI (if key configured and primary is not OpenAI)
+4. `LLMProviderError` → SSE `error` event or HTTP 502
+
+**RAG retrieval** (`infrastructure/vectorstore/retriever.py`):
+
+- Vector search with cosine distance threshold (`RAG_MAX_DISTANCE`)
+- Keyword search
+- Fallback chunks **only in hybrid mode** (`RAG_STRICT_MODE=false`)
+
+| `RAG_STRICT_MODE` | No relevant KB hit |
+| --- | --- |
+| `true` | Refuse with fixed message — LLM not called |
+| `false` | Fall back to LLM general knowledge |
+
+**Rule:** Application code depends on **ports**, not LangChain directly. Adapters live in `infrastructure/llm/` and `infrastructure/vectorstore/`.
+
 ### Layer responsibilities
 
 | Layer             | Responsibility                                            |
@@ -242,10 +293,12 @@ infrastructure/        Postgres, Redis, llm/, vectorstore/
 | `api/`            | Validate HTTP input, call services, return responses      |
 | `application/`    | Use-cases: register user, stream chat, upload document    |
 | `domain/`         | Core types and interfaces (`LLMPort`, `RetrieverPort`)    |
-| `infrastructure/` | Postgres, Redis, LangChain LLM, vector search, job worker |
+| `infrastructure/` | Postgres, Redis, LLM adapters, vector search, job worker |
 | `core/`           | Config, middleware, exceptions, auth dependencies         |
 
 **Rule:** Application code depends on **ports**, not LangChain directly. Adapters live in `infrastructure/llm/` and `infrastructure/vectorstore/`.
+
+See [LLM and RAG architecture](#llm-and-rag-architecture) for provider fallback and strict RAG modes.
 
 ---
 
@@ -306,11 +359,21 @@ POST /chat/stream
   → rate limit (Redis)
   → find or create conversation
   → save user message
-  → fetch RAG context (optional)
-  → stream LLM tokens (SSE: meta → token → done)
+  → fetch RAG context (optional; similarity threshold + strict/hybrid mode)
+  → build LLM messages (application layer)
+  → stream via LLMPort (SSE: meta → token → done, or error on LLM failure)
   → save assistant message
   → every 4 messages → enqueue conversation summary job
 ```
+
+SSE events from `stream_events.py`:
+
+| Event | Payload |
+| --- | --- |
+| `meta` | `conversation_id`, `llm`, `route` |
+| `token` | `{ "content": "..." }` |
+| `done` | `conversation_id`, `content`, `route`, `rag` |
+| `error` | `{ "code": "LLM_ERROR", "message": "..." }` |
 
 ### Knowledge upload
 
@@ -389,7 +452,10 @@ Copy `.env.example` → `.env`. All keys match `app/core/config.py` (`Settings`)
 | `REDIS_URL` | `redis://redis:6379/0` | Sessions, rate limits, ARQ queue. Use `localhost` for local Python |
 | `GEMINI_API_KEY` | *(empty)* | Gemini LLM + embeddings (empty = demo mode) |
 | `GEMINI_MODEL` | `gemini-3.6-flash` | Gemini chat model (older models like `gemini-2.0-flash` return 404 for new keys) |
+| `GEMINI_FALLBACK_MODEL` | *(empty)* | Secondary Gemini model when primary fails |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | Gemini embedding model |
+| `RAG_STRICT_MODE` | `false` | `true` = refuse when no relevant KB hit; `false` = hybrid (LLM fallback) |
+| `RAG_MAX_DISTANCE` | `0.45` | Max pgvector cosine distance for a chunk to count as relevant |
 | `JWT_SECRET_KEY` | *(dev placeholder)* | Sign access tokens (min 32 characters in production) |
 | `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
 | `JWT_EXPIRE_MINUTES` | `10080` (7 days) | Token / session lifetime |
