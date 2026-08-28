@@ -1,164 +1,550 @@
-# FastAPI backend
+# FastAPI Backend
 
-Production AI chat API (Docker). UI: `../frontend`.
+REST API for AI chat, conversation history, knowledge documents, and authentication.
 
-**Stack:** FastAPI · LangChain (LLM + embeddings) · custom RAG · Postgres/pgvector · Redis/ARQ  
-**Not used:** LangGraph · n8n
+Runs in **Docker** (API + worker + Postgres + Redis), or **locally** with Python + Uvicorn (Postgres/Redis via Docker). The Next.js UI lives in `../frontend`.
 
-## LangChain vs custom code
+---
 
-| Concern | Technology | Module |
+## Quick start
+
+### Option A — Docker (full stack)
+
+```powershell
+# 1. Backend
+cd backend
+Copy-Item .env.example .env
+docker compose up --build
+
+# 2. Database migrations (new terminal, after Postgres is up)
+cd backend
+docker compose run --rm api alembic upgrade head
+
+# 3. Frontend (new terminal)
+cd ..\frontend
+Copy-Item .env.local.example .env.local
+npm install
+npm run dev
+
+# 4. Format + lint (optional — no Python venv required)
+cd ..\backend
+.\scripts\ruff.ps1
+```
+
+> On first `docker compose up`, `init_db()` also creates tables automatically. Run `alembic upgrade head` to apply versioned migrations (recommended after pulling schema changes).
+
+### Option B — Local Python (API on host, no Docker for api/worker)
+
+Requires **Python 3.12+**. Postgres and Redis still run in Docker (pgvector image).
+
+```powershell
+# 1. Infra only (Postgres + Redis)
+cd backend
+Copy-Item .env.example .env
+docker compose up postgres redis -d
+
+# 2. For local Python only — uncomment localhost lines in `.env` (see .env.example)
+#    DATABASE_URL=...@localhost:5432/...
+#    REDIS_URL=redis://localhost:6379/0
+
+# 3. Python venv + dependencies
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# 4. Database migrations
+alembic upgrade head
+
+# 5. Run API
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 6. Worker (new terminal — optional, for document embedding + summaries)
+cd backend
+.\.venv\Scripts\Activate.ps1
+arq app.infrastructure.queue.worker.WorkerSettings
+
+# 7. Frontend (new terminal)
+cd ..\frontend
+Copy-Item .env.local.example .env.local
+npm install
+npm run dev
+```
+
+**Local tests** (Postgres + Redis must be running):
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pytest
+```
+
+### URLs
+
+| Service            | URL                                 |
+| ------------------ | ----------------------------------- |
+| Chat UI            | http://localhost:3000               |
+| API docs (Swagger) | http://localhost:8000/docs          |
+| Health             | http://localhost:8000/api/v1/health |
+| Adminer (DB UI)    | http://localhost:8080               |
+
+Register or log in from the UI. Leave `GEMINI_API_KEY` empty for **demo mode** (real HTTP, DB, SSE; mock LLM text).
+
+### Common commands (Docker)
+
+```powershell
+# Database migrations — apply
+docker compose run --rm api alembic upgrade head
+
+# Database migrations — revert last
+docker compose run --rm api alembic downgrade -1
+
+# Inspect
+docker compose run --rm api alembic current
+docker compose run --rm api alembic history
+
+# Logs
+docker compose logs -f api worker
+
+# Run tests in container
+docker compose run --rm api pytest
+
+# Stop and remove volumes (reset DB)
+docker compose down -v
+```
+
+### Database migrations (reference)
+
+All commands below use **Alembic** (SQLAlchemy 2.0). Replace the local column with the Docker column when using containers.
+
+#### Apply migrations (upgrade)
+
+| Action | Docker | Local (venv active) |
 | --- | --- | --- |
-| Chat LLM (stream / complete) | LangChain `ChatGoogleGenerativeAI` / `ChatOpenAI` | `ai/llm/` |
-| Message objects | `langchain_core.messages` | `ai/llm/providers.py` |
-| Embeddings | LangChain `GoogleGenerativeAIEmbeddings` / `OpenAIEmbeddings` | `ai/rag/embeddings.py` |
-| Summarize job | LangChain LLM `ainvoke` | `ai/llm/providers.py` → `jobs/tasks.py` |
-| Chunking | Plain Python `split_text()` | `ai/rag/service.py` |
-| Vector search | SQLAlchemy + pgvector | `ai/rag/pgvector.py` |
-| Retriever | SQL (vector → keyword → fallback) | `ai/rag/retrieve.py` |
-| Chat orchestration | `retrieve → LLM` (no graph) | `ai/chat.py` |
-| HTTP / auth / persist / SSE | FastAPI + SQLAlchemy | `api/`, `services/`, `db/` |
+| Apply all pending | `docker compose run --rm api alembic upgrade head` | `alembic upgrade head` |
+| Apply next one only | `docker compose run --rm api alembic upgrade +1` | `alembic upgrade +1` |
+| Upgrade to revision | `docker compose run --rm api alembic upgrade 002_perf_indexes` | `alembic upgrade 002_perf_indexes` |
 
-**Rule of thumb:** LangChain = **model calls**. RAG = **find chunks + call model**. Everything else = **FastAPI app code**.
+#### Revert migrations (downgrade)
 
-## Layout
+| Action | Docker | Local (venv active) |
+| --- | --- | --- |
+| Revert last migration | `docker compose run --rm api alembic downgrade -1` | `alembic downgrade -1` |
+| Revert last N migrations | `docker compose run --rm api alembic downgrade -2` | `alembic downgrade -2` |
+| Downgrade to revision | `docker compose run --rm api alembic downgrade 001_initial` | `alembic downgrade 001_initial` |
+| Revert all (empty schema) | `docker compose run --rm api alembic downgrade base` | `alembic downgrade base` |
 
-| Folder | Role |
-| --- | --- |
-| **api/** | HTTP routers, DTOs, mapping |
-| **core/** | Config, security, JWT, errors |
-| **models/** | SQLAlchemy tables |
-| **db/** | Session + SQL access |
-| **services/** | Business logic |
-| **ai/** | LLM, prompts, RAG, chat flow |
-| **clients/** | Redis, ARQ |
-| **jobs/** | Background summarize + embed |
+#### Create & inspect
+
+| Action | Docker | Local (venv active) |
+| --- | --- | --- |
+| New migration (autogenerate) | `docker compose run --rm api alembic revision --autogenerate -m "msg"` | `alembic revision --autogenerate -m "msg"` |
+| New empty migration | `docker compose run --rm api alembic revision -m "msg"` | `alembic revision -m "msg"` |
+| Current revision | `docker compose run --rm api alembic current` | `alembic current` |
+| History | `docker compose run --rm api alembic history` | `alembic history` |
+| Verbose history | `docker compose run --rm api alembic history --verbose` | `alembic history --verbose` |
+| Mark DB at revision (no SQL) | `docker compose run --rm api alembic stamp head` | `alembic stamp head` |
+
+Migration files: `alembic/versions/` (`001_initial`, `002_perf_indexes`). Full guide: [Database migrations (SQLAlchemy 2.0 + Alembic)](#database-migrations-sqlalchemy-20--alembic).
+
+---
+
+## Stack
+
+| Component     | Technology                                      |
+| ------------- | ----------------------------------------------- |
+| API           | FastAPI, Uvicorn                                |
+| ORM           | **SQLAlchemy 2.0** (async) + **Alembic**        |
+| Database      | PostgreSQL + pgvector                           |
+| AI            | LangChain (LLM + embeddings)                    |
+| Search        | pgvector + keyword fallback                     |
+| Cache / queue | Redis + ARQ                                     |
+| Auth          | JWT + HttpOnly session cookie                   |
+
+### Database — SQLAlchemy 2.0 + Alembic
+
+| Layer | Location | Role |
+| --- | --- | --- |
+| **Models** | `infrastructure/database/models/` | SQLAlchemy 2.0 declarative models (`Mapped`, `mapped_column`, `relationship`) |
+| **Repositories** | `infrastructure/database/repositories/` | Async queries via `AsyncSession` |
+| **Session** | `core/database.py` | `create_async_engine` + `async_sessionmaker` (`asyncpg` driver) |
+| **Migrations** | `alembic/` | Alembic revision scripts (`alembic/versions/`) |
+
+**Workflow after changing a model:**
+
+1. Edit model in `infrastructure/database/models/`
+2. Generate migration: `alembic revision --autogenerate -m "describe change"`
+3. Apply: `alembic upgrade head` (or Docker equivalent in [Quick start](#quick-start))
+
+`init_db()` on startup runs `create_all` for local Docker convenience; **Alembic is the source of truth** for schema changes.
+
+---
+
+## Project structure
+
+Clean architecture — dependencies point inward (API → application → domain ← infrastructure).
 
 ```
 app/
-  api/v1/          auth  chat  conversations  knowledge  health
-  core/            config  security  dependencies  errors
-  models/          user  conversation  message  document
-  db/              session + repositories
-  services/        auth  chat  conversation  knowledge
-  ai/
-    llm/           factory + providers (LangChain)
-    prompts/       system + RAG + summarize text
-    rag/           chunk  embed  pgvector  retrieve
-    chat.py        optional RAG → LLM
-  clients/         redis  queue
-  jobs/            worker  tasks
+├── api/v1/                    HTTP layer (routers + dto/)
+│   ├── auth/
+│   ├── chat/
+│   ├── conversations/
+│   ├── knowledge/             routes under /documents
+│   └── health/
+├── application/               Use-cases
+│   ├── auth/                  service.py, mapper.py
+│   ├── chat/                  service.py, helpers.py, mapper.py, stream_events.py
+│   ├── conversations/
+│   └── knowledge/
+├── domain/                    Business rules and ports
+│   └── chat/                  entities.py, ports.py
+├── infrastructure/            External systems
+│   ├── database/              SQLAlchemy 2.0 models + repositories
+│   │   ├── models/            ORM (Mapped, mapped_column)
+│   │   └── repositories/      AsyncSession data access
+│   ├── llm/                   LangChain LLM adapter (implements LLMPort)
+│   ├── vectorstore/           embeddings + pgvector retrieval (implements RetrieverPort)
+│   ├── cache/                 Redis, sessions
+│   ├── queue/                 ARQ queue + worker
+│   └── jobs/                  background tasks
+└── core/                      Cross-cutting concerns
+    ├── config.py
+    ├── middleware.py          Request ID, CORS, security headers, IP rate limit
+    ├── exceptions/            Stable JSON error envelope + handlers
+    ├── dependencies.py        Depends(get_current_user), service wiring
+    ├── security.py            JWT encode/decode (used by Depends, not middleware)
+    └── database.py            SQLAlchemy 2.0 async engine + session factory
 ```
 
-## Domain glossary
-
-| Term | Code / route |
-| --- | --- |
-| **Conversation** | `models/conversation.py` · `/api/v1/conversations` |
-| **Message** | `models/message.py` |
-| **Chat** | `services/chat.py` · `/api/v1/chat/stream\|complete` |
-| **Knowledge** | `services/knowledge.py` · `/api/v1/documents` |
-| **Document / Chunk** | `models/document.py` · `DocumentChunk` |
-| **Retriever** | `ai/rag/retrieve.py` |
-| **RAG** | `ai/rag/` + `ai/chat.py` |
-
-## Chat flow (`ai/chat.py`)
+### Request flow
 
 ```
-use_rag?
-  yes → Retriever → rag_context
-  no  → skip
-       ↓
-LangChain LLM  →  SSE tokens or JSON complete
+HTTP Request
+    ↓
+core/middleware.py     Request ID · CORS · security headers · IP rate limit
+    ↓
+api/v1/router.py       Validate input, call application service
+    ↓
+Depends(get_current_user)   Auth — session cookie or Bearer JWT
+    ↓
+application/service    Use-case (stream chat, upload document, …)
+    ↓
+domain/ports           LLMPort, RetrieverPort (interfaces)
+    ↓
+infrastructure/        Postgres, Redis, llm/, vectorstore/
 ```
 
-| Function | Endpoint | Job |
-| --- | --- | --- |
-| `stream_chat` | `POST /chat/stream` | retrieve → SSE meta/token/done |
-| `run_chat` | `POST /chat/complete` | retrieve → one JSON reply |
+**Rule:** Middleware handles **global HTTP** concerns only. Authentication and authorization live in `Depends(get_current_user)` — not in middleware.
 
-## End-to-end workflows
+### Layer responsibilities
+
+| Layer             | Responsibility                                            |
+| ----------------- | --------------------------------------------------------- |
+| `api/`            | Validate HTTP input, call services, return responses      |
+| `application/`    | Use-cases: register user, stream chat, upload document    |
+| `domain/`         | Core types and interfaces (`LLMPort`, `RetrieverPort`)    |
+| `infrastructure/` | Postgres, Redis, LangChain LLM, vector search, job worker |
+| `core/`           | Config, middleware, exceptions, auth dependencies         |
+
+**Rule:** Application code depends on **ports**, not LangChain directly. Adapters live in `infrastructure/llm/` and `infrastructure/vectorstore/`.
+
+---
+
+## API routes
+
+Base path: `/api/v1`
+
+### Health
+
+| Method | Path      | Use                                                         |
+| ------ | --------- | ----------------------------------------------------------- |
+| `GET`  | `/health` | Status page — reports LLM, Postgres, Redis, and layer flags |
 
 ### Auth
 
-`POST /auth/register|login` → `services/auth` → `db/user` → JWT `TokenResponse`  
-Protected routes: `get_current_user` (Bearer JWT).
+| Method | Path             | Use                                                 |
+| ------ | ---------------- | --------------------------------------------------- |
+| `POST` | `/auth/register` | Sign-up form — create account and start a session   |
+| `POST` | `/auth/login`    | Login form — authenticate and start a session       |
+| `POST` | `/auth/logout`   | Logout button — revoke session and clear cookie     |
+| `GET`  | `/auth/me`       | App boot — load current user profile for the header |
 
-### Knowledge ingest
+Protected routes accept **session cookie** first, then **Bearer JWT** as fallback.
+
+### Conversations
+
+| Method   | Path                  | Use                                         |
+| -------- | --------------------- | ------------------------------------------- |
+| `GET`    | `/conversations`      | Sidebar — list all chat threads             |
+| `GET`    | `/conversations/{id}` | Open thread — load full message history     |
+| `DELETE` | `/conversations/{id}` | Sidebar delete — remove thread and messages |
+
+### Chat
+
+| Method | Path             | Use                                               |
+| ------ | ---------------- | ------------------------------------------------- |
+| `POST` | `/chat/stream`   | Main chat UI — stream AI tokens via SSE           |
+| `POST` | `/chat/complete` | Non-streaming clients — return full reply as JSON |
+
+### Knowledge (documents)
+
+| Method   | Path              | Use                                             |
+| -------- | ----------------- | ----------------------------------------------- |
+| `GET`    | `/documents`      | Knowledge page — list uploaded documents        |
+| `POST`   | `/documents`      | Upload form — ingest text and enqueue embedding |
+| `DELETE` | `/documents/{id}` | Remove document and vector chunks               |
+
+Interactive docs: http://localhost:8000/docs
+
+---
+
+## Request flows
+
+### Chat stream (main UI path)
+
+```
+POST /chat/stream
+  → rate limit (Redis)
+  → find or create conversation
+  → save user message
+  → fetch RAG context (optional)
+  → stream LLM tokens (SSE: meta → token → done)
+  → save assistant message
+  → every 4 messages → enqueue conversation summary job
+```
+
+### Knowledge upload
 
 ```
 POST /documents
-  → save Document
-  → split_text() → DocumentChunk rows
+  → save document row
+  → split text into chunks
   → commit
-  → ARQ process_document
-       → LangChain embed
-       → replace chunks + pgvector vectors
+  → ARQ job: embed chunks → store vectors in pgvector
 ```
 
-No API key: chunks saved; **keyword** retrieval works; embeddings stay `null`.
+Without an API key, chunks are saved and **keyword search** still works; embeddings stay empty.
 
-### Chat stream (main path)
+### Background jobs (ARQ worker)
 
-`POST /chat/stream` · `EventSourceResponse` · UI uses `fetch` + stream (not `EventSource` — POST + JWT).
+| Job                      | Trigger               | Action                                 |
+| ------------------------ | --------------------- | -------------------------------------- |
+| `process_document`       | After document upload | Embed chunks with LangChain → pgvector |
+| `summarize_conversation` | Every 4 chat messages | LLM summary → `Conversation.summary`   |
 
-```
-rate limit (Redis)
-  → SessionLocal (SSE outlives request-scoped get_db)
-  → get/create conversation
-  → save user message + commit
-  → ai/chat.stream_chat → SSE events:
-       meta / token / done / error
-  → save assistant message + commit
-  → every 4 messages → ARQ summarize_conversation
-```
+Worker command: `arq app.infrastructure.queue.worker.WorkerSettings`
 
-### Background jobs (ARQ)
+---
 
-| Job | Trigger | Does |
-| --- | --- | --- |
-| `summarize_conversation` | Every 4 chat messages | LangChain summary → `Conversation.summary` |
-| `process_document` | After document create | LangChain embed → pgvector |
+## Application services (key entry points)
 
-Worker: `arq app.jobs.worker.WorkerSettings`
+| Service               | Method                | Endpoint                     |
+| --------------------- | --------------------- | ---------------------------- |
+| `AuthService`         | `register_user`       | `POST /auth/register`        |
+| `AuthService`         | `login_user`          | `POST /auth/login`           |
+| `AuthService`         | `get_user_profile`    | `GET /auth/me`               |
+| `ChatService`         | `stream_chat`         | `POST /chat/stream`          |
+| `ChatService`         | `complete_chat`       | `POST /chat/complete`        |
+| `ConversationService` | `list_conversations`  | `GET /conversations`         |
+| `ConversationService` | `get_conversation`    | `GET /conversations/{id}`    |
+| `ConversationService` | `delete_conversation` | `DELETE /conversations/{id}` |
+| `KnowledgeService`    | `list_documents`      | `GET /documents`             |
+| `KnowledgeService`    | `create_document`     | `POST /documents`            |
+| `KnowledgeService`    | `delete_document`     | `DELETE /documents/{id}`     |
+
+Chat helpers (`application/chat/helpers.py`): `fetch_rag_context`, `generate_full_reply`, `generate_streaming_tokens`.
+
+---
 
 ## Docker
 
 ```powershell
+cd backend
 Copy-Item .env.example .env
 docker compose up --build
 ```
 
-| Service | Port | Role |
+| Service    | Port | Role                             |
+| ---------- | ---- | -------------------------------- |
+| `api`      | 8000 | FastAPI (hot reload in dev)      |
+| `worker`   | —    | ARQ background jobs              |
+| `postgres` | 5432 | PostgreSQL + pgvector            |
+| `redis`    | 6379 | Sessions, rate limits, job queue |
+| `adminer`  | 8080 | Database admin UI                |
+
+Start the UI separately: `cd ../frontend && npm run dev`
+
+### Environment variables
+
+Copy `.env.example` → `.env`. All keys match `app/core/config.py` (`Settings`).
+
+| Variable | Default (Docker) | Purpose |
 | --- | --- | --- |
-| `api` | 8000 | uvicorn `--reload` |
-| `worker` | — | ARQ |
-| `postgres` | 5432 | pgvector/pg16 |
-| `redis` | 6379 | rate limit + queue |
-| `adminer` | 8080 | DB UI |
+| `APP_NAME` | `AI Chat` | API title (Swagger) |
+| `APP_ENV` | `development` | `production` enables secure cookies |
+| `CORS_ORIGINS` | `http://localhost:3000,...` | Allowed frontend origins (comma-separated) |
+| `POSTGRES_USER` | `ai_chat` | Postgres user (compose + `DATABASE_URL`) |
+| `POSTGRES_PASSWORD` | `ai_chat_pass` | Postgres password |
+| `POSTGRES_DB` | `ai_chat` | Database name |
+| `DATABASE_URL` | `@postgres:5432` | Async SQLAlchemy URL (`asyncpg`). Use `@localhost` for local Python |
+| `REDIS_URL` | `redis://redis:6379/0` | Sessions, rate limits, ARQ queue. Use `localhost` for local Python |
+| `GEMINI_API_KEY` | *(empty)* | Gemini LLM + embeddings (empty = demo mode) |
+| `GEMINI_MODEL` | `gemini-3.6-flash` | Gemini chat model (older models like `gemini-2.0-flash` return 404 for new keys) |
+| `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | Gemini embedding model |
+| `JWT_SECRET_KEY` | *(dev placeholder)* | Sign access tokens (min 32 characters in production) |
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
+| `JWT_EXPIRE_MINUTES` | `10080` (7 days) | Token / session lifetime |
+| `RATE_LIMIT_PER_MINUTE` | `30` | Per-user chat rate limit |
+| `RATE_LIMIT_IP_PER_MINUTE` | `120` | Per-IP global rate limit |
+| `SESSION_COOKIE_NAME` | `session_id` | HttpOnly session cookie name |
+| `COOKIE_SAMESITE` | `lax` | Cookie SameSite policy |
 
-| URL | |
-| --- | --- |
-| Docs | http://localhost:8000/docs |
-| Health | http://localhost:8000/api/v1/health |
+**LLM:** Set `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey). New keys use the `AQ.` auth-key format (older `AIza…` keys still work). Use `GEMINI_MODEL=gemini-3.6-flash`. If chat returns *permission denied* or *quota* errors, enable billing on the linked Google Cloud project. Leave `GEMINI_API_KEY` empty for **demo mode**.
 
-Leave `GEMINI_API_KEY` empty for demo mode. Start UI: `cd ../frontend && npm run dev`.
+Docker Compose overrides `DATABASE_URL` and `REDIS_URL` for `api` / `worker` services; values in `.env` still apply when running uvicorn on the host.
+
+### Database migrations (SQLAlchemy 2.0 + Alembic)
+
+Schema is defined in `infrastructure/database/models/` (SQLAlchemy 2.0). Versioned changes go through **Alembic** in `alembic/versions/`.
+
+On first startup, `init_db()` creates extensions, tables, and indexes automatically (`create_all`). For reproducible schema changes, use Alembic.
+
+#### Docker
+
+```powershell
+# --- Apply (upgrade) ---
+docker compose run --rm api alembic upgrade head          # all pending
+docker compose run --rm api alembic upgrade +1            # one step forward
+docker compose run --rm api alembic upgrade 002_perf_indexes   # to specific revision
+
+# --- Revert (downgrade) ---
+docker compose run --rm api alembic downgrade -1          # undo last migration
+docker compose run --rm api alembic downgrade -2          # undo last 2 migrations
+docker compose run --rm api alembic downgrade 001_initial # to specific revision
+docker compose run --rm api alembic downgrade base        # revert all migrations
+
+# --- Create & inspect ---
+docker compose run --rm api alembic revision --autogenerate -m "describe change"
+docker compose run --rm api alembic revision -m "describe change"   # empty migration
+docker compose run --rm api alembic current
+docker compose run --rm api alembic history
+docker compose run --rm api alembic history --verbose
+docker compose run --rm api alembic stamp head            # mark DB at head without running SQL
+```
+
+#### Local (venv active, Postgres running)
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+
+# --- Apply (upgrade) ---
+alembic upgrade head
+alembic upgrade +1
+alembic upgrade 002_perf_indexes
+
+# --- Revert (downgrade) ---
+alembic downgrade -1
+alembic downgrade -2
+alembic downgrade 001_initial
+alembic downgrade base
+
+# --- Create & inspect ---
+alembic revision --autogenerate -m "describe change"
+alembic revision -m "describe change"
+alembic current
+alembic history
+alembic history --verbose
+alembic stamp head
+```
+
+**Typical workflow after editing a model:**
+
+1. Change `infrastructure/database/models/*.py`
+2. `alembic revision --autogenerate -m "add column foo"`
+3. Review the generated file in `alembic/versions/`
+4. `alembic upgrade head`
+5. To undo: `alembic downgrade -1`
+
+Migration files:
+
+| Revision           | File                  | Purpose                                                    |
+| ------------------ | --------------------- | ---------------------------------------------------------- |
+| `001_initial`      | `001_initial.py`      | Users, conversations, messages, documents, pgvector chunks |
+| `002_perf_indexes` | `002_perf_indexes.py` | Composite indexes for chat and knowledge queries           |
+
+**Note:** `create_all` on startup is idempotent for local Docker; Alembic is the source of truth when you change models and need reproducible upgrades.
+
+---
+
+## Dev tooling (Python + Pylance + Ruff)
+
+**FastAPI + VS Code:** Python + Pylance + Ruff.
+
+| Tool        | Responsibility                               |
+| ----------- | -------------------------------------------- |
+| **Pylance** | IntelliSense, type checking, Python analysis |
+| **Ruff**    | Formatting, linting, import sorting          |
+
+Install extensions (or accept workspace recommendations): **Python**, **Pylance**, **Ruff**.
+
+Workspace settings: `.vscode/settings.json`  
+Config: `backend/pyproject.toml` (`line-length = 88`, rules `E`, `F`, `I`, `UP`, `B`).
+
+**Terminal (Ruff):**
+
+```powershell
+# From backend/
+.\scripts\ruff.ps1
+```
+
+Or:
+
+```powershell
+ruff format .
+ruff check . --fix
+```
+
+**Editor:** Pylance handles analysis in VS Code; Ruff formats and fixes on save.
+
+---
 
 ## Tests
 
+Three layers: **unit** (no DB), **integration** (Postgres), **e2e** (full stack).
+
 ```powershell
 docker compose up -d --build
+
+# All tests
 docker compose run --rm api pytest
+
+# By layer
+docker compose run --rm api pytest -m unit
+docker compose run --rm api pytest -m integration
+
+# E2E against running stack
+docker compose up -d
+docker compose run --rm -e E2E_BASE_URL=http://api:8000 api pytest -m e2e
 ```
 
-## Demo checklist
+| Layer       | Folder                                    | What it covers                                  |
+| ----------- | ----------------------------------------- | ----------------------------------------------- |
+| Unit        | `tests/api`, `tests/ai`, `tests/services` | DTOs, mappers, RAG routing, JWT, rate limits    |
+| Integration | `tests/integration/`                      | Auth, chat persistence, SSE contract, knowledge |
+| E2E         | `tests/e2e/`                              | Register → chat → stream smoke tests            |
 
-1. Register / login → JWT  
-2. (Optional) upload document → chunks + embed job  
-3. Chat → SSE tokens in UI  
-4. Rows in Postgres (Adminer)  
-5. ~4 messages → worker writes summary  
+Full guide: [../docs/TESTING.md](../docs/TESTING.md)
 
-## Comments
+---
 
-Section blocks under `app/` — see `.cursor/rules/python-comments.mdc`.
+## Security
+
+Sessions, cookies, rate limits, and auth details: [../docs/SECURITY.md](../docs/SECURITY.md)
+
+---
+
+## Local development tips
+
+1. **Demo mode** — leave `GEMINI_API_KEY` empty; API still streams and persists messages.
+2. **Migrations** — see [Database migrations (SQLAlchemy 2.0 + Alembic)](#database-migrations-sqlalchemy-20--alembic) above.
+3. **Logs** — `docker compose logs -f api worker`
+4. **Reset data** — `docker compose down -v` (removes volumes)

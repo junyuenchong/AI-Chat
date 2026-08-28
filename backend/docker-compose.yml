@@ -71,7 +71,7 @@ services:
 
   worker:
     <<: *app
-    command: arq app.jobs.worker.WorkerSettings
+    command: arq app.infrastructure.queue.worker.WorkerSettings
     volumes:
       - ./app:/app/app
 

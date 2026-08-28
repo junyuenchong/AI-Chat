@@ -1,73 +1,135 @@
 # AI Chat
 
-Full-stack portfolio chat: **Next.js** + **FastAPI** + **LangChain** (LLM/embeddings) + **RAG** (retrieve + answer).
+Full-stack chat application with **RAG** (retrieval-augmented generation).
 
-No LangGraph. No n8n.
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js — chat UI, auth, knowledge upload |
+| Backend | FastAPI — REST API, SSE streaming, background jobs |
+| AI | LangChain — LLM and embeddings (Gemini or OpenAI) |
+| Data | PostgreSQL + pgvector, Redis |
 
-## LangChain vs RAG (read this first)
+**Not used:** LangGraph, n8n.
 
-| Layer | What it is | Uses LangChain? | Where |
-| --- | --- | --- | --- |
-| **LangChain** | AI model layer — prompts, chat LLM, embeddings, summarize | **Yes** | `backend/app/ai/llm`, `prompts`, `rag/embeddings.py` |
-| **RAG** | Retrieve Knowledge chunks → pass to LLM | **Partly** | `ai/rag/` (embeddings = LC; chunk/search = custom) |
-| **App** | HTTP, auth, DB, SSE, jobs | **No** | `api/`, `services/`, `db/`, `jobs/` |
+---
 
-```
-Knowledge ingest:  Document → split (Python) → embed (LangChain) → pgvector (Postgres)
-Chat:              optional Retriever (SQL) → prompt + LLM (LangChain) → SSE
-```
+## What this app does
 
-Gemini or OpenAI when `GEMINI_API_KEY` / `OPENAI_API_KEY` is set. Empty keys → **demo** streaming (real HTTP, DB, SSE — mock LLM text).
-
-## Domain glossary
-
-**Conversation** = chat history. **Knowledge** = what the AI can retrieve.
+Users can **register**, **chat** with an AI assistant (streaming or JSON), manage **conversation history**, and upload **knowledge documents** that the AI can search when answering questions.
 
 | Term | Meaning |
 | --- | --- |
-| **Conversation** | One chat thread (sidebar item) |
-| **Message** | One user or assistant turn |
-| **Chat** | AI call — stream or complete |
-| **Knowledge** | User's RAG document store |
-| **Document** | Uploaded source file (text) |
-| **Chunk** | Split piece of a document |
-| **Retriever** | Finds relevant chunks for a query |
-| **RAG** | Retriever + LLM (context-aware answer) |
+| **Conversation** | One chat thread (shown in the sidebar) |
+| **Message** | A single user or assistant turn inside a conversation |
+| **Knowledge** | Documents uploaded for RAG search |
+| **Document** | One uploaded text file |
+| **Chunk** | A small piece of a document used for search |
+| **RAG** | Search relevant chunks → pass them to the LLM → answer with context |
 
-**Example:** *"What is our annual leave policy?"* → Retriever picks a chunk from `company_handbook.pdf` → LangChain LLM answers using that context → saved as an assistant **Message** in the **Conversation**.
+**Example:** User asks *"What is our leave policy?"* → retriever finds a matching chunk → LLM answers using that text → reply is saved as a message in the conversation.
 
-## Folders
+---
 
-| Folder | Role |
+## Repository layout
+
+```
+FastApi/
+├── backend/          FastAPI API, AI, database, Docker Compose
+├── frontend/         Next.js chat UI (run with npm)
+└── docs/             Testing, security, and presentation notes
+```
+
+| README | Contents |
 | --- | --- |
-| [backend/](backend/) | FastAPI + AI + Postgres/Redis — Docker |
-| [frontend/](frontend/) | Next.js chat UI — npm locally |
+| [backend/README.md](backend/README.md) | Architecture, API routes, Docker, tests |
+| [frontend/README.md](frontend/README.md) | UI setup, API proxy, SSE wiring |
+
+---
 
 ## Quick start
+
+### 1. Backend (Docker)
 
 ```powershell
 cd backend
 Copy-Item .env.example .env
 docker compose up --build
+```
 
-cd ..\frontend
+### 2. Frontend (local)
+
+```powershell
+cd frontend
 Copy-Item .env.local.example .env.local
 npm install
 npm run dev
 ```
 
+### 3. Open the app
+
 | Service | URL |
 | --- | --- |
 | Chat UI | http://localhost:3000 |
-| OpenAPI | http://localhost:8000/docs |
-| Health | http://localhost:8000/api/v1/health |
-| Adminer | http://localhost:8080 |
+| API docs (Swagger) | http://localhost:8000/docs |
+| Health check | http://localhost:8000/api/v1/health |
+| Database UI (Adminer) | http://localhost:8080 |
 
-Register or log in from the UI. No demo auto-login.
+Register or log in from the UI. There is no demo auto-login.
 
-## Docs
+### LLM modes
 
-| File | Contents |
+| Configuration | Behavior |
 | --- | --- |
-| [backend/README.md](backend/README.md) | Layout, workflows, Docker, tests |
-| [frontend/README.md](frontend/README.md) | UI, JSON proxy, SSE wiring |
+| `GEMINI_API_KEY` or `OPENAI_API_KEY` set | Real LLM responses via LangChain |
+| Keys empty | **Demo mode** — real HTTP, database, and SSE; mock LLM text |
+
+---
+
+## API overview
+
+All routes are under `/api/v1`.
+
+| Method | Path | Use |
+| --- | --- | --- |
+| `GET` | `/health` | Service status and dependency flags |
+| `POST` | `/auth/register` | Create account and start a session |
+| `POST` | `/auth/login` | Log in and start a session |
+| `POST` | `/auth/logout` | End session and clear cookie |
+| `GET` | `/auth/me` | Load current user profile |
+| `GET` | `/conversations` | List chat threads (sidebar) |
+| `GET` | `/conversations/{id}` | Load one thread with messages |
+| `DELETE` | `/conversations/{id}` | Delete a thread |
+| `POST` | `/chat/stream` | Stream AI reply via SSE |
+| `POST` | `/chat/complete` | Return full AI reply as JSON |
+| `GET` | `/documents` | List uploaded knowledge documents |
+| `POST` | `/documents` | Upload a document for RAG |
+| `DELETE` | `/documents/{id}` | Delete a document |
+
+---
+
+## Architecture (high level)
+
+```
+Browser (Next.js)
+    ↓  JSON + SSE (cookie session or Bearer JWT)
+FastAPI routers  →  application services  →  domain ports
+                              ↓
+                    infrastructure (Postgres, Redis, LangChain, ARQ worker)
+```
+
+- **Routers** handle HTTP only.
+- **Application** layer contains business logic (`service.py`, `mapper.py`, `helpers.py`).
+- **Domain** defines entities and ports (`LLMPort`, `RetrieverPort`).
+- **Infrastructure** implements database, AI, cache, and background jobs.
+
+Details: [backend/README.md](backend/README.md).
+
+---
+
+## Further reading
+
+| Document | Purpose |
+| --- | --- |
+| [docs/TESTING.md](docs/TESTING.md) | How to run unit, integration, and e2e tests |
+| [docs/SECURITY.md](docs/SECURITY.md) | Sessions, rate limits, auth |
+| [docs/PRESENTATION.md](docs/PRESENTATION.md) | Demo walkthrough script |

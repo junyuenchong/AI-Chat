@@ -1,15 +1,17 @@
-"""Route map smoke tests (no database).
+"""Unit tests for API route registration.
 
-Confirms /api/v1 feature routes are registered after the app restructure.
+No database — confirms all v1 endpoints are mounted on the app.
 """
 
 from app.api.v1.router import api_router
 from app.main import create_app
 
+# ────────────────────────────────────────────────────────────
+# test_v1_routes_are_mounted
+# Endpoint: GET /health, POST /auth/login, POST /chat/stream, GET /conversations, GET /documents
+# Use: confirm core feature routes exist in the OpenAPI schema after app startup.
+# ────────────────────────────────────────────────────────────
 
-# ---------------------------------------------------------------------------
-# OpenAPI paths — nested include_router does not flatten route.path; use schema.
-# ---------------------------------------------------------------------------
 
 def test_v1_routes_are_mounted():
     paths = set(create_app().openapi()["paths"])
@@ -18,12 +20,15 @@ def test_v1_routes_are_mounted():
     assert "/api/v1/conversations" in paths
     assert "/api/v1/documents" in paths
     assert "/api/v1/health" in paths
-    assert api_router.routes  # wiring list is non-empty
+    assert api_router.routes
 
 
-# ---------------------------------------------------------------------------
-# Versioning — every documented API path stays under /api/v1/.
-# ---------------------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
+# test_app_uses_v1_prefix
+# Endpoint: all /api/v1/* routes
+# Use: every documented API path stays under the /api/v1 version prefix.
+# ────────────────────────────────────────────────────────────
+
 
 def test_app_uses_v1_prefix():
     paths = set(create_app().openapi()["paths"])

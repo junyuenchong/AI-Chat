@@ -12,8 +12,10 @@ async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   const headers = new Headers();
   const auth = req.headers.get("authorization");
   const contentType = req.headers.get("content-type");
+  const cookie = req.headers.get("cookie");
   if (auth) headers.set("authorization", auth);
   if (contentType) headers.set("content-type", contentType);
+  if (cookie) headers.set("cookie", cookie);
 
   const init: RequestInit = {
     method: req.method,
@@ -22,11 +24,31 @@ async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   };
   if (req.method !== "GET" && req.method !== "HEAD") {
     init.body = req.body;
-    // Node fetch needs duplex when forwarding a streamed body.
     (init as RequestInit & { duplex: "half" }).duplex = "half";
   }
 
-  const res = await fetch(target, init);
+  let res: Response;
+  try {
+    res = await fetch(target, init);
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "Could not reach the FastAPI backend.";
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "BACKEND_UNAVAILABLE",
+          message:
+            "API server is unreachable. Start the backend (docker compose up) and try again.",
+          fields: [{ field: "detail", message: detail }],
+        },
+      }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }
+
   const out = new Headers();
   const pass = ["content-type", "cache-control", "x-accel-buffering"];
   for (const key of pass) {
@@ -34,6 +56,18 @@ async function proxy(req: NextRequest, path: string[]): Promise<Response> {
     if (value) out.set(key, value);
   }
   out.set("cache-control", "no-cache, no-transform");
+
+  const setCookies =
+    typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
+  if (setCookies.length) {
+    for (const value of setCookies) {
+      out.append("set-cookie", value);
+    }
+  } else {
+    const single = res.headers.get("set-cookie");
+    if (single) out.set("set-cookie", single);
+  }
+
   if (isStream) {
     out.set("content-type", "text/event-stream; charset=utf-8");
     out.set("x-accel-buffering", "no");

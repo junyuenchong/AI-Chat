@@ -1,0 +1,25 @@
+[project]
+name = "ai-chat-backend"
+version = "1.0.0"
+description = "FastAPI backend for AI chat with RAG"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["app", "tests", "scripts", "alembic"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# FastAPI uses Depends() in route/dependency signatures by design.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# conftest sets os.environ before importing the app.
+"tests/**" = ["E402", "E501"]
+# Legacy one-off migration scripts — not production code.
+"scripts/**" = ["E501", "F841"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
