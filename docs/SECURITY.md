@@ -1,47 +1,37 @@
-# Security & performance
+# Security
 
-Production-oriented auth, rate limiting, errors, and database tuning.
+Q2 minimal stack — JWT authentication, bcrypt passwords, structured API errors.
+
+No Redis sessions, no cookie-based auth, no rate-limit middleware.
 
 ---
 
-## Auth: HttpOnly cookie + Redis session
+## Auth: JWT (Bearer token)
 
 | Layer | Role |
 | --- | --- |
-| **Cookie** | `session_id` — HttpOnly, SameSite=Lax, Secure in production |
-| **Cache** | `infrastructure/cache/redis.py` — `session:{id}` → `{user_id, created_at}` with TTL |
-| **JWT** | Optional for OpenAPI / tests / API clients (`Authorization: Bearer`) |
-
-**Flow:** login/register → Redis session → Set-Cookie → `/me` reads cookie → logout deletes session + clears cookie.
-
-Browser UI uses `credentials: include` — **no token in localStorage**.
+| **Register / login** | Returns `access_token` (JWT) |
+| **Protected routes** | `Authorization: Bearer <token>` |
+| **Frontend** | Token in `sessionStorage` via `lib/auth/token.ts` |
+| **Logout** | Client clears token (stateless JWT) |
 
 **Code:**
 
 | Concern | Path |
 | --- | --- |
-| Session cookie helpers | `app/core/cookies.py` |
-| Redis session store | `app/infrastructure/cache/redis.py` |
-| JWT creation / verify | `app/core/security.py` |
+| JWT create / verify | `app/core/security.py` |
 | Current user dependency | `app/core/dependencies.py` |
 | Auth routes | `app/api/v1/auth/router.py` |
+| Frontend token helper | `frontend/src/lib/auth/token.ts` |
+| API client headers | `frontend/src/lib/api/client.ts` |
 
----
+### Auth flow
 
-## Rate limiting
-
-| Scope | Where | Limit |
-| --- | --- | --- |
-| **Per IP** | `RateLimitMiddleware` (all routes except health/docs) | `RATE_LIMIT_IP_PER_MINUTE` |
-| **Per user** | `enforce_rate_limit` on chat | `RATE_LIMIT_PER_MINUTE` |
-
-Redis down → fail open (availability).
-
-| Module | Path |
-| --- | --- |
-| IP middleware | `app/core/middleware.py` |
-| User chat limit | `app/core/logging.py` (`enforce_rate_limit`) |
-| Redis client | `app/infrastructure/cache/redis.py` |
+```
+POST /auth/login → JWT returned → sessionStorage
+GET  /auth/me    → Authorization: Bearer <token>
+POST /chat/stream → same Bearer header
+```
 
 ---
 
@@ -53,44 +43,42 @@ All API errors use one JSON envelope:
 { "error": { "code": "...", "message": "...", "fields": [] } }
 ```
 
-- Empty or undefined messages are never returned
-- Validation → field-level `fields[]`
-- No stack traces in responses
+| Code | HTTP | When |
+| --- | --- | --- |
+| `UNAUTHORIZED` | 401 | Missing or invalid JWT |
+| `CONVERSATION_NOT_FOUND` | 404 | Wrong or missing thread |
+| `LLM_ERROR` | 502 | Upstream model failure |
+| `VALIDATION_ERROR` | 422 | Blank message, bad input |
 
-| Module | Path |
-| --- | --- |
-| Domain exceptions | `app/core/exceptions/domain.py` |
-| Handlers | `app/core/exceptions/handlers.py` |
-| Registration | `app/core/exceptions/register.py` |
-
----
-
-## Performance
-
-| Technique | Where |
-| --- | --- |
-| **Composite indexes** | `messages(conversation_id, created_at)`, `conversations(user_id, updated_at)` |
-| **N+1 prevention** | `selectinload(Conversation.messages)` on detail fetch |
-| **List limits** | conversations (100), documents (200) |
-| **No eager load on lists** | sidebar list = metadata only |
-
-Indexes applied on `init_db()` and Alembic `002_create_conversations` / `003_create_documents`.
+SSE streams emit `error` events (not HTTP errors) for LLM failures mid-stream.
 
 ---
 
-## Data isolation
+## Database
 
-- All conversation and document queries are scoped by `user_id`
-- Cross-user access returns `404` (not `403`) to avoid leaking resource existence
-- Passwords stored as bcrypt hashes only — never returned in API responses
+- Passwords hashed with bcrypt (`app/core/security.py`)
+- Foreign keys with `ON DELETE CASCADE` for conversations/messages
+- Indexes on hot query paths (`messages.conversation_id`, `conversations.user_id`)
+- Users can only access their own conversations (enforced in `ChatService`)
+
+---
+
+## CORS
+
+Configured via `CORS_ORIGINS` in `.env`. Default allows `http://localhost:3000`.
+
+---
+
+## Production checklist
+
+- Set `JWT_SECRET_KEY` (min 32 chars, unique per environment)
+- Set `APP_ENV=production` and use HTTPS
+- Restrict `CORS_ORIGINS` to your frontend domain
+- Never commit `.env` with real API keys
+- Rotate `GEMINI_API_KEY` / `OPENAI_API_KEY` if exposed
 
 ---
 
 ## Related docs
 
-| Document | Purpose |
-| --- | --- |
-| [../backend/README.md](../backend/README.md) | Architecture, env vars, migrations, pytest, Ruff |
-| [../frontend/README.md](../frontend/README.md) | TypeScript, ESLint, Prettier, Jest |
-| [TESTING.md](TESTING.md) | Auth and rate-limit test coverage |
-| [PRESENTATION.md](PRESENTATION.md) | Demo walkthrough |
+[../README.md](../README.md) · [../backend/README.md](../backend/README.md) · [TESTING.md](TESTING.md)

@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Chat hook — message bubbles, streaming state, and send handler.
+ *
+ * Request path:
+ *   features/chat/components/ChatPage.tsx
+ *     → features/chat/hooks.ts  (this file)
+ *     → features/chat/api.ts → POST /chat/stream
+ */
+
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { formatStreamError, streamChat } from "./api";
@@ -54,6 +63,8 @@ export function useChat({
       if (streaming) return;
       const message = input.trim();
       if (!message) return;
+
+      // Step 1 — optimistically show user message + empty assistant bubble.
       setInput("");
       setError(null);
       setBubbles((prev) => [
@@ -62,13 +73,12 @@ export function useChat({
         { role: "assistant", content: "" },
       ]);
       setStreaming(true);
+
       try {
-        const body: { message: string; use_rag: boolean; conversation_id?: string } = {
-          message,
-          use_rag: true,
-        };
+        const body: { message: string; conversation_id?: string } = { message };
         if (conversationId) body.conversation_id = conversationId;
 
+        // Step 2 — stream SSE events and update the assistant bubble live.
         await streamChat(body, (eventName, data) => {
           if (eventName === "meta" && typeof data.conversation_id === "string") {
             onConversationId(data.conversation_id);
@@ -89,6 +99,7 @@ export function useChat({
               return next;
             });
           }
+          // Step 3 — finalize thread id and title on done.
           if (eventName === "done") {
             if (typeof data.conversation_id === "string") {
               onConversationId(data.conversation_id);
@@ -107,6 +118,7 @@ export function useChat({
               });
             }
           }
+          // Step 4 — show LLM or HTTP errors in the assistant bubble.
           if (eventName === "error") {
             setBubbles((prev) => {
               const next = [...prev];
@@ -118,6 +130,7 @@ export function useChat({
             });
           }
         });
+        // Step 5 — refresh sidebar conversation list.
         await onAfterSend();
       } catch (err) {
         setBubbles((prev) => {

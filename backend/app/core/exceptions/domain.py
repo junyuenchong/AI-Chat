@@ -62,7 +62,7 @@ class ConversationNotFound(AppException):
 # ────────────────────────────────────────────────────────
 # DocumentNotFound
 # Internal — document missing or not owned by user.
-# Raised from knowledge services; maps to HTTP 404.
+# Raised from domain services; maps to HTTP 404.
 # ────────────────────────────────────────────────────────
 class DocumentNotFound(AppException):
     """Document does not exist or is not owned by the current user (HTTP 404)."""

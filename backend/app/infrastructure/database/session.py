@@ -54,16 +54,10 @@ async def init_db() -> None:
 
     create_all does not migrate columns — use Alembic after schema changes.
     """
-    load_models()  # Register all ORM models before create_all runs.
+    load_models()
     async with engine.begin() as conn:
-        # pgvector powers embedding similarity search in the knowledge base.
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
-        # pg_trgm enables fuzzy text matching for hybrid retrieval.
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-        # Create any tables that do not yet exist (idempotent on restart).
         await conn.run_sync(Base.metadata.create_all)
-        # Composite indexes for hot query paths — safe to re-run via IF NOT EXISTS.
         await conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_messages_conversation_created "
@@ -74,17 +68,5 @@ async def init_db() -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_conversations_user_updated "
                 "ON conversations (user_id, updated_at DESC)"
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_document_chunks_doc_index "
-                "ON document_chunks (document_id, chunk_index)"
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_documents_user_created "
-                "ON documents (user_id, created_at DESC)"
             )
         )

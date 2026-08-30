@@ -87,7 +87,9 @@ describe("apiJson", () => {
     expect(data.ok).toBe(true);
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/health",
-      expect.objectContaining({ credentials: "include" }),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
     );
   });
 

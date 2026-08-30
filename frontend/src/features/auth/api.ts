@@ -1,60 +1,86 @@
-import { apiJson } from "@/lib/api/client";
+/**
+ * Auth API — register, login, logout, current user.
+ *
+ * Request path:
+ *   features/auth/AuthProvider.tsx
+ *     → features/auth/api.ts  (this file)
+ *     → lib/api/client.ts → FastAPI /api/v1/auth/*
+ */
+
+import { apiJson, apiUrl, authHeaders, readError } from "@/lib/api/client";
+import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/auth/token";
 
 import type { TokenResponse, UserProfile } from "./types";
 
 // ────────────────────────────────────────────────────────
 // registerUser
-// Feature: auth
+// Path: features/auth/api.ts
 // Endpoint: POST /auth/register
-// Use: create a new account and start a session.
+// Use: create account and store JWT in sessionStorage.
 // ────────────────────────────────────────────────────────
-
 export async function registerUser(body: {
   email: string;
   password: string;
   name: string;
 }): Promise<TokenResponse> {
-  return apiJson<TokenResponse>("/api/v1/auth/register", {
+  // Step 1 — call register endpoint.
+  const token = await apiJson<TokenResponse>("/api/v1/auth/register", {
     method: "POST",
     body: JSON.stringify(body),
   });
+  // Step 2 — save JWT for subsequent requests.
+  setAccessToken(token.access_token);
+  return token;
 }
 
 // ────────────────────────────────────────────────────────
 // loginUser
-// Feature: auth
+// Path: features/auth/api.ts
 // Endpoint: POST /auth/login
-// Use: authenticate and start a session.
+// Use: sign in and store JWT in sessionStorage.
 // ────────────────────────────────────────────────────────
-
 export async function loginUser(body: {
   email: string;
   password: string;
 }): Promise<TokenResponse> {
-  return apiJson<TokenResponse>("/api/v1/auth/login", {
+  const token = await apiJson<TokenResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify(body),
   });
+  setAccessToken(token.access_token);
+  return token;
 }
 
 // ────────────────────────────────────────────────────────
 // logoutUser
-// Feature: auth
-// Endpoint: POST /auth/logout
-// Use: revoke session and clear the HttpOnly cookie.
+// Path: features/auth/api.ts
+// Use: clear JWT client-side (stateless JWT — no server call).
 // ────────────────────────────────────────────────────────
-
 export async function logoutUser(): Promise<void> {
-  await apiJson("/api/v1/auth/logout", { method: "POST" });
+  clearAccessToken();
 }
 
 // ────────────────────────────────────────────────────────
 // fetchCurrentUser
-// Feature: auth
+// Path: features/auth/api.ts
 // Endpoint: GET /auth/me
-// Use: load the logged-in user profile on app boot.
+// Use: restore session on page load when a token exists.
 // ────────────────────────────────────────────────────────
+export async function fetchCurrentUser(): Promise<UserProfile | null> {
+  // Step 1 — skip network call when not logged in.
+  const token = getAccessToken();
+  if (!token) return null;
 
-export async function fetchCurrentUser(): Promise<UserProfile> {
-  return apiJson<UserProfile>("/api/v1/auth/me");
+  const res = await fetch(apiUrl("/api/v1/auth/me"), {
+    headers: authHeaders(token),
+  });
+  // Step 2 — stale or invalid token → clear and treat as logged out.
+  if (res.status === 401) {
+    clearAccessToken();
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(await readError(res, "Request failed"));
+  }
+  return (await res.json()) as UserProfile;
 }

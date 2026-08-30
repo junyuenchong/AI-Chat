@@ -23,13 +23,16 @@ describe("streamChat", () => {
       sseResponse([{ event: "token", data: { content: "Hello" } }]),
     );
     const events: string[] = [];
-    await streamChat({ message: "hi", use_rag: false }, (name) => {
+    await streamChat({ message: "hi" }, (name) => {
       events.push(name);
     });
     expect(events).toContain("token");
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/chat/stream",
-      expect.objectContaining({ method: "POST", credentials: "include" }),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
     );
   });
 
@@ -38,7 +41,7 @@ describe("streamChat", () => {
       jsonResponse({ error: { message: "Unauthorized" } }, 401),
     );
     const errors: string[] = [];
-    await streamChat({ message: "hi", use_rag: false }, (name, data) => {
+    await streamChat({ message: "hi" }, (name, data) => {
       if (name === "error") errors.push(String(data.message));
     });
     expect(errors[0]).toContain("Unauthorized");

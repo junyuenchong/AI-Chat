@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Auth route layout — centered login/register pages.
+ *
+ * Request path:
+ *   app/(auth)/layout.tsx
+ *     → AuthLayout.tsx  (this file)
+ *     → redirects to /chat when already signed in
+ */
+
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
@@ -17,6 +26,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
+    // Step 1 — skip login page when JWT session is already valid.
     if (authReady && isAuthenticated) {
       router.replace("/chat");
     }

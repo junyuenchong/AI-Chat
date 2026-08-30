@@ -7,7 +7,7 @@ type InputProps = InputHTMLAttributes<HTMLInputElement>;
 // ────────────────────────────────────────────────────────
 // Input
 // Feature: ui (shared)
-// Use: styled text input for auth and knowledge forms.
+// Use: styled text input for auth forms.
 // ────────────────────────────────────────────────────────
 
 export function Input({ className, ...props }: InputProps) {

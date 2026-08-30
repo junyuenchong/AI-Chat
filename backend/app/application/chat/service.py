@@ -2,6 +2,12 @@
 Chat application service.
 
 Handles streaming and non-streaming AI chat — saves messages and calls the LLM.
+
+Request path:
+  api/v1/chat/router.py
+    → application/chat/mapper.py
+    → application/chat/service.py  (this file)
+    → infrastructure/ai/langchain/adapters/chat_engine.py
 """
 
 from __future__ import annotations
@@ -15,14 +21,11 @@ from app.application.chat.commands import ChatCommand, ChatCompleteResult
 from app.application.conversations.service import ConversationService
 from app.core.config import get_settings
 from app.core.exceptions import AppException, LLMError, database_error
-from app.core.logging import enforce_rate_limit
 from app.domain.chat.ports import ChatEngine
-from app.infrastructure.cache.redis import get_redis
 from app.infrastructure.database.repositories.chat import MessageRepository
 from app.infrastructure.database.repositories.conversation import ConversationRepository
 from app.infrastructure.database.session import SessionLocal
-from app.infrastructure.messaging.queue import get_queue
-from app.shared.constants import EMPTY_REPLY, LLM_FAILURE, SUMMARIZE_EVERY_N_MESSAGES
+from app.shared.constants import EMPTY_REPLY, LLM_FAILURE
 from fastapi import Request
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -33,7 +36,7 @@ class ChatService:
     # ────────────────────────────────────────────────────────
     # __init__
     # Internal — created by dependency injection.
-    # Wires up the chat engine, knowledge search, and message storage.
+    # Wires up the chat engine and message storage.
     # ────────────────────────────────────────────────────────
     def __init__(
         self,
@@ -58,22 +61,20 @@ class ChatService:
         request: Request,
     ) -> AsyncIterator[dict]:
         """Save the user message, stream AI tokens, then save the assistant reply."""
-        # Throttle how often this user can send messages.
-        await enforce_rate_limit(get_redis(), command.user_id)
-
         incoming = command.message.strip()
         if not incoming:
             yield _build_blank_message_error()
             return
 
         try:
-            # Stream may outlive the request — use a dedicated DB session.
+            # Step 1 — open a dedicated DB session (stream may outlive the request).
             async with SessionLocal() as db:
                 conversations = ConversationRepository(db)
                 messages = MessageRepository(db)
                 conversation_service = ConversationService(conversations)
 
                 try:
+                    # Step 2 — find existing thread or create one from the first message.
                     (
                         conversation,
                         _created,
@@ -86,20 +87,21 @@ class ChatService:
                     yield _build_app_error_event(exc.code, exc.message, exc.fields)
                     return
 
+                # Step 3 — load history, save user message, commit before LLM call.
                 history = await messages.list_history(conversation.id)
                 await messages.add(conversation.id, "user", incoming)
                 await db.commit()
 
+                # Step 4 — stream tokens from LangChain and map to SSE frames.
                 state = _StreamTurnState()
                 mapper = _StreamEventMapper(conversation.id, state)
+                yield _build_meta_event(mapper, "chat")
                 async for (
                     event_name,
                     event_data,
                 ) in self.chat_engine.generate_streaming_tokens(
-                    command.user_id,
                     incoming,
                     history,
-                    command.use_rag,
                 ):
                     if await request.is_disconnected():
                         return
@@ -107,30 +109,14 @@ class ChatService:
                     if frame is not None:
                         yield frame
 
+                # Step 5 — save assistant reply and bump thread activity.
                 assistant_text = "".join(state.pieces).strip() or EMPTY_REPLY
                 await messages.add(conversation.id, "assistant", assistant_text)
                 await conversation_service.update_last_activity(conversation)
                 await db.commit()
 
-                count = await messages.count(conversation.id)
-                queue = get_queue()
-                if (
-                    queue is not None
-                    and count >= SUMMARIZE_EVERY_N_MESSAGES
-                    and count % SUMMARIZE_EVERY_N_MESSAGES == 0
-                ):
-                    try:
-                        await queue.enqueue_job(
-                            "summarize_conversation", conversation.id
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Could not enqueue summarize job for %s", conversation.id
-                        )
-
-                yield _build_done_event(
-                    conversation.id, assistant_text, state.route, state.used_rag
-                )
+                # Step 6 — signal completion with full text for the UI.
+                yield _build_done_event(conversation.id, assistant_text)
         except Exception as exc:
             if not isinstance(exc, AppException):
                 logger.exception("Chat stream error: %s", exc.__class__.__name__)
@@ -143,8 +129,6 @@ class ChatService:
     # ────────────────────────────────────────────────────────
     async def complete_chat(self, command: ChatCommand) -> ChatCompleteResult:
         """Save the user message, get one AI reply, save it, and return JSON."""
-        await enforce_rate_limit(get_redis(), command.user_id)
-
         incoming = command.message.strip()
         if not incoming:
             raise AppException(
@@ -161,6 +145,7 @@ class ChatService:
             )
 
         try:
+            # Step 1 — find or create the conversation thread.
             (
                 conversation,
                 _created,
@@ -170,18 +155,19 @@ class ChatService:
                 incoming,
             )
 
+            # Step 2 — load history, save user message, commit before LLM call.
             history = await self.messages.list_history(conversation.id)
             await self.messages.add(conversation.id, "user", incoming)
             await self.conversations.db.commit()
 
+            # Step 3 — get one full reply from LangChain (no streaming).
             result = await self.chat_engine.generate_full_reply(
-                command.user_id,
                 incoming,
                 history,
-                command.use_rag,
             )
             reply = (result.get("answer") or "").strip() or EMPTY_REPLY
 
+            # Step 4 — save assistant reply and return JSON result.
             await self.messages.add(conversation.id, "assistant", reply)
             await self.conversation_service.update_last_activity(conversation)
             await self.conversations.db.commit()
@@ -204,16 +190,14 @@ class ChatService:
 
 @dataclass
 class _StreamTurnState:
-    """Tracks route, RAG usage, and accumulated tokens during one streamed reply."""
+    """Tracks accumulated tokens during one streamed reply."""
 
-    route: str = "direct"
-    used_rag: bool = False
     pieces: list[str] = field(default_factory=list)
 
 
 @dataclass
 class _StreamEventMapper:
-    """Converts internal stream events (route, token, error) into SSE frames."""
+    """Converts internal stream events (token, error) into SSE frames."""
 
     conversation_id: str
     state: _StreamTurnState
@@ -286,9 +270,7 @@ def _build_app_error_event(
 # Endpoint: POST /chat/stream (internal)
 # Sends the final event with the complete AI reply and metadata.
 # ────────────────────────────────────────────────────────
-def _build_done_event(
-    conversation_id: str, content: str, route: str, used_rag: bool
-) -> dict:
+def _build_done_event(conversation_id: str, content: str) -> dict:
     """Signal that streaming is finished and return the full assistant message."""
     return {
         "event": "done",
@@ -296,8 +278,6 @@ def _build_done_event(
             {
                 "conversation_id": conversation_id,
                 "content": content,
-                "route": route,
-                "rag": used_rag,
             }
         ),
     }
@@ -319,11 +299,10 @@ def _build_error_from_exception(exc: Exception) -> dict:
 # ────────────────────────────────────────────────────────
 # _build_meta_event
 # Endpoint: POST /chat/stream (internal)
-# Tells the client whether the reply used RAG or went direct to the LLM.
+# SSE meta/done helpers for the chat stream.
 # ────────────────────────────────────────────────────────
 def _build_meta_event(mapper: _StreamEventMapper, route: str) -> dict:
-    """Emit meta event with conversation id, LLM provider, and route."""
-    mapper.state.route = route
+    """Emit meta event with conversation id and LLM provider."""
     return {
         "event": "meta",
         "data": json.dumps(
@@ -351,16 +330,6 @@ def _build_llm_error_event(_mapper: _StreamEventMapper, message: str) -> dict:
 
 
 # ────────────────────────────────────────────────────────
-# _record_rag_usage
-# Endpoint: POST /chat/stream (internal)
-# Records whether knowledge-base search returned results (no SSE frame sent).
-# ────────────────────────────────────────────────────────
-def _record_rag_usage(mapper: _StreamEventMapper, flag: str) -> None:
-    """Update state from rag flag ('1' = found context, '0' = none)."""
-    mapper.state.used_rag = flag == "1"
-
-
-# ────────────────────────────────────────────────────────
 # _build_token_event
 # Endpoint: POST /chat/stream (internal)
 # Sends one AI token to the client and saves it to the reply buffer.
@@ -375,8 +344,6 @@ _INTERNAL_EVENT_HANDLERS: dict[
     str, Callable[[_StreamEventMapper, str], dict | None]
 ] = {
     "error": lambda m, data: _build_llm_error_event(m, data),
-    "route": lambda m, data: _build_meta_event(m, data),
-    "rag": lambda m, data: _record_rag_usage(m, data) or None,
     "token": lambda m, data: _build_token_event(m, data),
 }
 

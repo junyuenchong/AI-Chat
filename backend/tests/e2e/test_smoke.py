@@ -39,7 +39,7 @@ async def test_live_register_chat_flow(live_client):
     assert register.status_code == 201
     headers = auth_headers(register.json()["access_token"])
 
-    complete = await chat_complete(live_client, headers, "E2E hello", use_rag=False)
+    complete = await chat_complete(live_client, headers, "E2E hello")
     assert complete.status_code == 200
     conversation_id = complete.json()["conversation_id"]
 
@@ -48,7 +48,6 @@ async def test_live_register_chat_flow(live_client):
         headers,
         "E2E second turn",
         conversation_id=conversation_id,
-        use_rag=False,
     )
     assert follow_up.status_code == 200
 
@@ -78,7 +77,6 @@ async def test_live_chat_stream_contract(live_client):
         live_client,
         headers,
         "E2E stream test",
-        use_rag=False,
     )
     assert response.status_code == 200
     names = [e["event"] for e in events]

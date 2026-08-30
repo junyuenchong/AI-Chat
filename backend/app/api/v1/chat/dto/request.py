@@ -16,7 +16,6 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=8000)
     conversation_id: UUID | None = None
-    use_rag: bool = True
 
     @field_validator("message")
     @classmethod

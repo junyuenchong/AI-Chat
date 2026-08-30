@@ -1,7 +1,7 @@
 """
 Async retry helpers with exponential backoff.
 
-Used for transient LLM and embedding API failures (429, 503, timeouts).
+Used for transient LLM API failures (429, 503, timeouts).
 Permanent errors (auth, model not found) are not retried.
 """
 

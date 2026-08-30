@@ -3,6 +3,11 @@ Chat API routes.
 
 HTTP layer for chat operations (SSE stream and JSON complete).
 Business logic is handled by ChatService.
+
+Request path:
+  frontend POST /api/v1/chat/stream
+    → api/v1/chat/router.py  (this file)
+    → application/chat/service.py
 """
 
 from app.api.v1.chat.dto.request import ChatRequest

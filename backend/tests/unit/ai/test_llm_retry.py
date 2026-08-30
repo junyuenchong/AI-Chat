@@ -15,7 +15,10 @@ async def test_complete_retries_transient_error_before_success():
     )
     model = LangChainLLM([("gemini", llm)])
 
-    with patch("app.infrastructure.ai.langchain.llm.asyncio.sleep", new_callable=AsyncMock):
+    with patch(
+        "app.infrastructure.ai.langchain.llm.provider.asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
         result = await model.complete([{"role": "user", "content": "hi"}])
 
     assert result == "hello"
@@ -31,7 +34,10 @@ async def test_complete_fails_over_to_next_model_after_retries():
 
     model = LangChainLLM([("primary", primary), ("fallback", fallback)])
 
-    with patch("app.infrastructure.ai.langchain.llm.asyncio.sleep", new_callable=AsyncMock):
+    with patch(
+        "app.infrastructure.ai.langchain.llm.provider.asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
         result = await model.complete([{"role": "user", "content": "hi"}])
 
     assert result == "from fallback"

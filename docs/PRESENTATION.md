@@ -1,257 +1,161 @@
 # Presentation script (15–20 minutes)
 
-**Project:** AI Chat — FastAPI SSE streaming + Next.js + Postgres session memory + RAG  
-**Goal:** Streaming LLM chat with conversation history stored in the database.
+**Assignment:** Question 2 — streaming LLM chat  
+**Project:** AI Chat — FastAPI SSE + Next.js + Postgres + LangChain  
+**Goal:** Token-by-token streaming with conversation history in the database.
 
 ---
 
 ## Slide 1 — Title (30 sec)
 
-> "I built a full-stack streaming chat: FastAPI streams LLM tokens over SSE, Postgres stores conversation history, and Next.js is the UI. LangChain lives in infrastructure only — the application layer depends on ports, not the framework."
+> "I chose **Question 2** and built a minimal production-style chat: FastAPI streams LLM tokens over SSE, Postgres stores conversation history, and Next.js is the UI. LangChain lives in infrastructure only — the application layer depends on ports, not the framework."
 
 ---
 
-## Slide 2 — Problem & goals (1 min)
+## Slide 2 — Why Question 2 (not 1 or 3) (1.5 min)
 
-**Say:**
+| | **Q1: Agentic RAG** | **Q2: LLM chat (this project)** | **Q3: Agentic AI** |
+| --- | --- | --- | --- |
+| **Primary goal** | Retrieve chunks; agent decides retrieval | Stream tokens; LLM remembers prior turns | Autonomous tool-use against external systems |
+| **What I built** | Not in scope | `POST /chat/stream`, SSE, Postgres, JWT, Next.js, Docker, tests | Not in scope |
+| **LangChain use** | Retriever + embeddings + agent | Chat Model + Messages + `astream()` | LangGraph + tools |
 
-- User sends a message and sees **tokens appear live** (not wait for full JSON).
-- LLM must **remember prior turns** in the same session.
-- Stack must be **demo-able** without a paid API key (demo mode).
-- **Bonus:** Docker, clean architecture, tests at unit / integration / e2e levels.
+> "Focus is **streaming + session memory** — not agentic RAG or agentic AI."
 
 ---
 
-## Slide 3 — Architecture (2 min)
+## Slide 3 — Problem & goals (1 min)
 
-**Diagram:**
+- User sees **tokens appear live** (SSE).
+- LLM **remembers prior turns** (Postgres — not LangChain Memory).
+- **Demo mode** without API keys (HTTP, DB, SSE still real).
+- **Clean Architecture** + unit / integration / e2e tests.
+
+---
+
+## Slide 4 — Architecture (2 min)
 
 ```
-Next.js UI
-   │  JSON → /api/v1 proxy (cookies)
-   │  SSE  → FastAPI direct (no proxy buffering)
-   ▼
-api/v1/router.py + dto/request.py
-   ▼
-application/*/mapper.py → application/*/service.py
-   ▼
-domain/entities.py + ports.py (ChatEngine)
-   ▼
-infrastructure/
-   ├─ ai/langchain/     LLM, embeddings, RAG, agent (6 files)
-   ├─ shared/retry.py   exponential backoff for transient API errors
-   ├─ database/         Postgres + repositories
-   ├─ vector/           pgvector queries
-   ├─ cache/redis.py    sessions + rate limits
-   └─ messaging/        ARQ embed + summarize jobs
+Next.js → FastAPI → ChatService → Postgres (history) + LangChain (LLM only)
 ```
 
-**Key sentence:**
+```
+┌──────────────┐     ┌────────────────────┐
+│  PostgreSQL  │     │     LangChain      │
+│  conversations│    │  Chat Model        │
+│  messages    │     │  Messages          │
+│              │     │  astream()         │
+└──────────────┘     └────────────────────┘
+```
 
-> "API handles HTTP and DTOs. Application handles use cases. Domain holds ports. Infrastructure implements LangChain, Postgres, Redis, and pgvector."
+**Postgres = persistence. LangChain = LLM interaction only.**
 
----
+LangChain folder:
 
-## Slide 4 — LangChain vs RAG vs app (1 min)
+```
+infrastructure/ai/langchain/
+├── llm/        factory, provider, messages
+├── prompts/    SYSTEM_PROMPT (plain string)
+├── chains/     ChatChain
+├── callbacks/  stream_llm_tokens
+└── adapters/   build_chat_engine()
+```
 
-| Layer | Uses LangChain? | Path |
-| --- | --- | --- |
-| LLM stream / complete | Yes | `infrastructure/ai/langchain/llm.py` |
-| Embeddings | Yes | `infrastructure/ai/langchain/embeddings.py` |
-| Prompts | Yes | `infrastructure/ai/langchain/prompts.py` |
-| RAG retrieval | Partial | `infrastructure/ai/langchain/retrieval.py` + `infrastructure/vector/pgvector.py` |
-| Orchestration | Yes | `infrastructure/ai/langchain/agent.py` (`ChatAgent` implements `ChatEngine`) |
-| HTTP / auth / DB | No | FastAPI + SQLAlchemy |
-
-> "Traditional RAG — retrieve context, then generate. Not agentic RAG."
-
----
-
-## Slide 4b — Resilience (30 sec)
-
-**Say:**
-
-- Transient LLM errors (429, 503, timeout) → **retry with exponential backoff** (`shared/retry.py`)
-- Still failing → **failover** to `GEMINI_FALLBACK_MODEL`, then OpenAI
-- RAG retrieval has its own fallback: vector → keyword → first chunks
-- ARQ embed jobs retry up to 3 times
-
-**Config:** `LLM_RETRY_MAX_ATTEMPTS`, `LLM_RETRY_BASE_DELAY_SECONDS`, `GEMINI_FALLBACK_MODEL`
+**Not used:** Vector DB · Retriever · Embeddings · RAG · LangGraph · Agent · Tools · LangChain Memory
 
 ---
 
-## Slide 5 — Live demo part 1: Setup + auth + chat (4 min)
+## Slide 5 — LangChain components (1 min)
 
-**Steps:**
+Only three — keep it simple:
+
+| Component | What it does |
+| --- | --- |
+| **Chat Model** | `ChatGoogleGenerativeAI` or `ChatOpenAI` |
+| **Messages** | `SystemMessage` + history as `HumanMessage`/`AIMessage` |
+| **Streaming** | `async for chunk in llm.astream(messages)` |
+
+```python
+messages = [
+    SystemMessage(content=SYSTEM_PROMPT),
+    *history_from_postgres,
+    HumanMessage(content=user_message),
+]
+async for chunk in llm.astream(messages):
+    yield chunk.content   # → SSE token events
+```
+
+No `ChatPromptTemplate`. History comes from Postgres.
+
+---
+
+## Slide 6 — Streaming flow (1 min)
+
+1. `POST /api/v1/chat/stream`
+2. Save user message → load history from Postgres
+3. Build LangChain messages → `llm.astream()`
+4. SSE: `meta` → `token`… → `done`
+5. Save assistant reply to Postgres
+
+---
+
+## Slide 7 — Live demo (5 min)
 
 ```powershell
 cd backend
+docker compose down -v --remove-orphans
 docker compose up --build
 docker compose run --rm api alembic upgrade head
 docker compose run --rm api python alembic/seeds/run.py
-
 cd ../frontend && npm run dev
 ```
 
-1. Open http://localhost:3000
-2. **Login** with `demo@example.com` / `demo123` (or register)
-3. Explain HttpOnly session cookie (`infrastructure/cache/redis.py`, not localStorage)
-4. Send: _"What is the difference between LangChain and RAG?"_
-5. Point at **tokens streaming** in the UI
-6. Open http://localhost:8000/docs → `POST /api/v1/chat/stream`
-
-**Call out:**
-
-- SSE events: `meta` → many `token` → `done`
-- User message saved **before** stream starts
+1. Login `demo@example.com` / `demo123` (or Register a new account first)
+2. Send a message → show tokens streaming live
+3. Follow-up → show session memory (same `conversation_id`)
+4. Optional: Adminer → `messages` table
+5. Optional: set `GEMINI_API_KEY` → real LLM
 
 ---
 
-## Slide 6 — Live demo part 2: Session memory (2 min)
+## Slide 8 — Code walk (1.5 min)
 
-**Steps:**
-
-1. Follow-up: _"Summarize what I just asked."_
-2. Refresh → login → same conversation in sidebar
-3. Optional: Adminer http://localhost:8080 → `messages` table
-
-> "History loads from `messages` ordered by `created_at`, passed to the LLM via the chat agent."
-
----
-
-## Slide 7 — Live demo part 3: Knowledge + RAG (2 min)
-
-Seeded docs include `hr-policy.md` (14 days annual leave).
-
-1. Ask: _"How many annual leave days do we get?"_
-2. Mention `use_rag: true` → retriever → context in system prompt
-
-**Upload flow:**
-
-```
-POST /documents → chunk → ARQ job → embed → pgvector
-```
-
-**Demo mode (no API key):**
-
-> "Demo mode mocks LLM text but the full HTTP, DB, SSE, and keyword-search pipeline still runs."
-
----
-
-## Slide 8 — Clean architecture walk (2 min)
-
-**Code pointers:**
-
-| Layer | Example |
+| Layer | File |
 | --- | --- |
-| Router | `api/v1/chat/router.py` — thin HTTP adapter |
-| DTO | `api/v1/chat/dto/request.py`, `response.py` |
-| Mapper | `application/chat/mapper.py` — DTO ↔ command/result |
-| Service | `application/chat/service.py` — no LangChain imports |
-| Port | `domain/chat/ports.py` — `ChatEngine` |
-| Infrastructure | `infrastructure/ai/langchain/agent.py` |
-
-**SSE specifics:**
-
-- `api/v1/chat/router.py` — `EventSourceResponse`
-- `application/chat/service.py` — own `SessionLocal()` (SSE outlives request DB session)
-- `frontend/src/lib/sse/reader.ts` — parses events
-
-> "EventSource is GET-only. We use `fetch` + readable stream for POST + auth."
+| Router | `api/v1/chat/router.py` |
+| Service | `application/chat/service.py` |
+| Port | `domain/chat/ports.py` (`ChatEngine`, `LLMPort`) |
+| Chain | `infrastructure/ai/langchain/chains/chat_chain.py` |
+| LLM | `infrastructure/ai/langchain/llm/provider.py` (`astream`) |
+| Frontend SSE | `frontend/src/lib/sse/reader.ts` |
 
 ---
 
-## Slide 9 — Database migrations & seeds (1 min)
-
-| | Path |
-| --- | --- |
-| Schema | `app/infrastructure/database/models.py` |
-| Migrations | `alembic/versions/` (`001` users → `002` conversations → `003` documents) |
-| Seeds | `alembic/seeds/` (`users.py`, `documents.py`, `run.py`) |
+## Slide 9 — Testing & Docker (2 min)
 
 ```powershell
-docker compose run --rm api alembic upgrade head
-docker compose run --rm api python alembic/seeds/run.py
+docker compose run --rm api pytest    # 51 tests, demo mode
+cd frontend && npm test               # 41 tests
 ```
 
-> "Schema migrations and reference data are separated — Alembic `versions/` for DDL, `seeds/` for demo data."
+Stack: **Postgres + API** only (no Redis, worker, vector DB).
+
+Pytest clears API keys — tests never hit external LLMs.
 
 ---
 
-## Slide 10 — Testing & quality (2 min)
+## Slide 10 — Q&A prep
 
-### Backend
-
-| Layer | Command | Covers |
-| --- | --- | --- |
-| **Unit** | `pytest -m unit` | Mappers, RAG routing, retry, LLM failover, rate limit, DTOs |
-| **Integration** | `pytest -m integration` | JWT, multi-turn, SSE, 404, 429 |
-| **E2E** | `pytest -m e2e` | Live register → chat → stream |
-| **Format + lint** | `.\scripts\ruff.ps1` | Ruff |
-
-### Frontend
-
-| Tool | Command |
-| --- | --- |
-| TypeScript | `npm run typecheck` |
-| ESLint | `npm run lint` |
-| Prettier | `npm run format:check` |
-| Jest | `npm test` |
-| Playwright | `npm run test:e2e` |
-
-Details: [TESTING.md](TESTING.md)
-
----
-
-## Slide 11 — Docker & ops (1 min)
-
-| Service | Role |
-| --- | --- |
-| `api` | Uvicorn |
-| `worker` | ARQ — embed + summarize |
-| `postgres` | pgvector |
-| `redis` | sessions, rate limits, job queue |
-| `adminer` | DB UI |
-
-| Folder | Purpose |
-| --- | --- |
-| `infrastructure/database/` | PostgreSQL |
-| `infrastructure/vector/` | pgvector queries |
-| `infrastructure/cache/` | Redis sessions + rate limits |
-| `infrastructure/messaging/` | ARQ queue + worker |
-| `infrastructure/ai/langchain/` | LangChain (6 files) |
-| `shared/retry.py` | Exponential backoff |
-
-Health: `GET /api/v1/health`
-
----
-
-## Slide 12 — Q&A prep
-
-1. _Why SessionLocal in stream?_ — Request-scoped DB closes before SSE finishes.
-2. _Why LangChain in infrastructure?_ — Replaceable; application depends on `ChatEngine` port only.
-3. _How test without API key?_ — Demo mode in `llm.py`; retriever tested with mocks.
-4. _DTO vs entity vs ORM?_ — API DTO → mapper → service → domain → infrastructure ORM.
-5. _Why separate cache/ and messaging/?_ — Same Redis, different responsibilities.
-6. _Migrations vs seeds?_ — `alembic/versions/` = schema; `alembic/seeds/` = reference data.
-7. _Frontend quality stack?_ — TypeScript strict + ESLint + Prettier + Jest + Playwright.
-8. _Retry vs failover?_ — Retry same model on transient errors; failover switches to a different model/provider after retries exhaust.
-
----
-
-## Timing
-
-| Section | Minutes |
-| --- | --- |
-| Intro + architecture | 4 |
-| Live demo | 8 |
-| Architecture + DB | 3 |
-| Testing + Docker | 3 |
-| Q&A | 2 |
-| **Total** | **~20** |
+1. _Why Q2?_ — Streaming API + DB session memory.
+2. _Why not Q1/Q3?_ — No retrieval agent, no tool loop, no LangGraph.
+3. _Why Postgres not LangChain Memory?_ — Persistence is app responsibility; LangChain only calls the model.
+4. _Why SessionLocal in stream?_ — Request DB closes before SSE ends.
+5. _Why LangChain in infrastructure?_ — `ChatEngine` port keeps app layer swappable.
+6. _Why JWT not cookies?_ — Simpler Q2 stack; token in `sessionStorage`.
+7. _Why not LangGraph?_ — Q2 is a straight line (history → LLM → stream), not a multi-step agent graph.
 
 ---
 
 ## One-line close
 
-> "FastAPI streams LangChain tokens over SSE, Postgres gives the LLM memory, retry + failover handle transient API errors, and tests cover unit logic through live smoke — all in Docker."
+> "Question 2: FastAPI streams LangChain tokens over SSE, Postgres gives the LLM memory, and tests cover unit logic through live smoke — Postgres + API in Docker."

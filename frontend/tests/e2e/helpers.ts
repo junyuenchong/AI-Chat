@@ -36,7 +36,7 @@ export function uniqueEmail(prefix = "e2e"): string {
 // registerAndLogin
 // Feature: e2e helpers
 // Endpoint: POST /auth/register
-// Use: create a session cookie via the UI before chat/knowledge flows.
+// Use: register and log in via the UI before chat flows.
 // ────────────────────────────────────────────────────────────
 
 export async function registerAndLogin(

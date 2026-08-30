@@ -19,7 +19,7 @@ from tests.helpers import auth_headers, chat_complete, chat_stream_events, regis
 async def test_chat_complete_without_token_returns_401(api_client):
     response = await api_client.post(
         "/api/v1/chat/complete",
-        json={"message": "hello", "use_rag": False},
+        json={"message": "hello"},
     )
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
@@ -36,7 +36,7 @@ async def test_chat_complete_without_token_returns_401(api_client):
 async def test_chat_stream_without_token_returns_401(api_client):
     response = await api_client.post(
         "/api/v1/chat/stream",
-        json={"message": "hello", "use_rag": False},
+        json={"message": "hello"},
     )
     assert response.status_code == 401
 
@@ -69,7 +69,6 @@ async def test_chat_complete_persists_conversation(api_client, auth_user):
         api_client,
         auth_user["headers"],
         "Hello from integration test",
-        use_rag=False,
     )
     assert response.status_code == 200
     body = response.json()
@@ -99,7 +98,7 @@ async def test_chat_complete_persists_conversation(api_client, auth_user):
 @pytest.mark.asyncio
 async def test_chat_multi_turn_same_conversation_id(api_client, auth_user):
     first = await chat_complete(
-        api_client, auth_user["headers"], "First turn question", use_rag=False
+        api_client, auth_user["headers"], "First turn question"
     )
     assert first.status_code == 200
     conversation_id = first.json()["conversation_id"]
@@ -109,7 +108,6 @@ async def test_chat_multi_turn_same_conversation_id(api_client, auth_user):
         auth_user["headers"],
         "Second turn follow-up",
         conversation_id=conversation_id,
-        use_rag=False,
     )
     assert second.status_code == 200
     assert second.json()["conversation_id"] == conversation_id
@@ -139,7 +137,6 @@ async def test_chat_unknown_conversation_id_returns_404(api_client, auth_user):
         auth_user["headers"],
         "hello",
         conversation_id=str(uuid4()),
-        use_rag=False,
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
@@ -159,7 +156,6 @@ async def test_chat_other_users_conversation_returns_404(api_client, auth_user):
         api_client,
         auth_headers(other["access_token"]),
         "private thread",
-        use_rag=False,
     )
     conversation_id = owned.json()["conversation_id"]
 
@@ -168,25 +164,23 @@ async def test_chat_other_users_conversation_returns_404(api_client, auth_user):
         auth_user["headers"],
         "try to hijack",
         conversation_id=conversation_id,
-        use_rag=False,
     )
     assert response.status_code == 404
 
 
 # ────────────────────────────────────────────────────────────
-# test_chat_use_rag_without_documents_still_succeeds
+# test_chat_complete_returns_reply
 # Endpoint: POST /chat/complete
-# Use: RAG enabled with no uploaded docs still returns a reply (direct route).
+# Use: chat returns a reply for a normal question.
 # ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_chat_use_rag_without_documents_still_succeeds(api_client, auth_user):
+async def test_chat_complete_returns_reply(api_client, auth_user):
     response = await chat_complete(
         api_client,
         auth_user["headers"],
-        "Question with no knowledge uploaded",
-        use_rag=True,
+        "Hello from integration test",
     )
     assert response.status_code == 200
     assert response.json()["content"]
@@ -205,7 +199,6 @@ async def test_chat_stream_emits_meta_token_done(api_client, auth_user):
         api_client,
         auth_user["headers"],
         "Stream hello",
-        use_rag=False,
     )
     assert response.status_code == 200
     names = [e["event"] for e in events]
@@ -216,7 +209,7 @@ async def test_chat_stream_emits_meta_token_done(api_client, auth_user):
     meta = events[0]["data"]
     assert meta["conversation_id"]
     assert meta["llm"] in {"demo", "gemini", "openai"}
-    assert meta["route"] in {"direct", "rag"}
+    assert meta["route"] == "chat"
     assert meta["components"] == "langchain"
 
     done = events[-1]["data"]
@@ -246,7 +239,6 @@ async def test_chat_stream_unknown_conversation_emits_error_event(
         auth_user["headers"],
         "hello",
         conversation_id=str(uuid4()),
-        use_rag=False,
     )
     assert response.status_code == 200
     assert any(e["event"] == "error" for e in events)
@@ -254,25 +246,3 @@ async def test_chat_stream_unknown_conversation_emits_error_event(
     assert error["data"]["code"] == "CONVERSATION_NOT_FOUND"
 
 
-# ────────────────────────────────────────────────────────────
-# test_chat_rate_limit_returns_429
-# Endpoint: POST /chat/complete
-# Use: too many chat requests in one minute return 429 RATE_LIMITED.
-# ────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_chat_rate_limit_returns_429(
-    api_client,
-    auth_user,
-    patch_redis,
-    rate_limit_settings,
-):
-    headers = auth_user["headers"]
-    for _ in range(2):
-        ok = await chat_complete(api_client, headers, "under limit", use_rag=False)
-        assert ok.status_code == 200
-
-    blocked = await chat_complete(api_client, headers, "over limit", use_rag=False)
-    assert blocked.status_code == 429
-    assert blocked.json()["error"]["code"] == "RATE_LIMITED"

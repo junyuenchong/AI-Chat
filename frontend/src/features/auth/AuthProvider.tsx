@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Auth context — JWT session state for the whole app.
+ *
+ * Request path:
+ *   app/providers.tsx
+ *     → features/auth/AuthProvider.tsx  (this file)
+ *     → features/auth/api.ts
+ */
+
 import {
   createContext,
   useCallback,
@@ -27,35 +36,39 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 // ────────────────────────────────────────────────────────
 // AuthProvider
-// Feature: auth
-// Use: wrap the app and expose session state to all features.
+// Path: features/auth/AuthProvider.tsx
+// Use: wrap the app and expose login state to all features.
 // ────────────────────────────────────────────────────────
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Step 1 — on mount, restore session from JWT in sessionStorage.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const profile = await fetchCurrentUser();
-        if (cancelled) return;
+      const profile = await fetchCurrentUser();
+      if (cancelled) return;
+      if (profile) {
         setIsAuthenticated(true);
         setUserEmail(profile.email);
-      } catch {
-        if (!cancelled) setIsAuthenticated(false);
-      } finally {
-        if (!cancelled) setAuthReady(true);
+      } else {
+        setIsAuthenticated(false);
+        setUserEmail(null);
       }
+      setAuthReady(true);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // ────────────────────────────────────────────────────────
+  // login
+  // Endpoint: POST /auth/login
+  // ────────────────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     const token = await loginUser({ email, password });
@@ -63,6 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserEmail(token.email);
   }, []);
 
+  // ────────────────────────────────────────────────────────
+  // register
+  // Endpoint: POST /auth/register
+  // ────────────────────────────────────────────────────────
   const register = useCallback(
     async (email: string, password: string, name: string) => {
       setError(null);
@@ -73,12 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // ────────────────────────────────────────────────────────
+  // logout
+  // Use: clear JWT and local auth state.
+  // ────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
-    try {
-      await logoutUser();
-    } catch {
-      // Clear local state even when the server logout fails.
-    }
+    await logoutUser();
     setIsAuthenticated(false);
     setUserEmail(null);
     setError(null);
@@ -103,10 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 // ────────────────────────────────────────────────────────
 // useAuth
-// Feature: auth
+// Path: features/auth/AuthProvider.tsx
 // Use: read login state and auth actions from any client component.
 // ────────────────────────────────────────────────────────
-
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

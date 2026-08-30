@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Conversations hook — sidebar thread list and active thread state.
+ *
+ * Request path:
+ *   features/conversations/ConversationProvider.tsx
+ *     → features/conversations/hooks.ts  (this file)
+ *     → features/conversations/api.ts
+ */
+
 import { useCallback, useState } from "react";
 
 import { getConversation, listConversations } from "./api";
@@ -32,9 +41,11 @@ export function useConversations() {
     async (id: string) => {
       setError(null);
       try {
+        // Step 1 — load thread metadata and messages from the API.
         const data = await getConversation(id);
         setActiveId(id);
         setActiveTitle(data.title);
+        // Step 2 — refresh sidebar list (order may have changed).
         await refresh();
         return data.messages.map((msg) => ({
           role: msg.role as "user" | "assistant",

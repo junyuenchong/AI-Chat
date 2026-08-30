@@ -26,7 +26,6 @@ class ChatMapper:
             conversation_id=str(request.conversation_id)
             if request.conversation_id
             else None,
-            use_rag=request.use_rag,
         )
 
     # ────────────────────────────────────────────────────────

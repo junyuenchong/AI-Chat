@@ -1,3 +1,12 @@
+/**
+ * Next.js API proxy — forwards /api/v1/* to FastAPI.
+ *
+ * Request path:
+ *   Browser fetch("/api/v1/...")
+ *     → app/api/v1/[...path]/route.ts  (this file)
+ *     → FastAPI http://localhost:8000/api/v1/...
+ */
+
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -8,23 +17,29 @@ const BACKEND = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").rep
   "",
 );
 
+// ────────────────────────────────────────────────────────
+// proxy
+// Path: app/api/v1/[...path]/route.ts
+// Use: forward method, body, and Authorization header to FastAPI.
+// ────────────────────────────────────────────────────────
 async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   const search = new URL(req.url).search;
   const target = `${BACKEND}/api/v1/${path.join("/")}${search}`;
   const isStream = path.join("/") === "chat/stream";
+
+  // Step 1 — copy auth and content-type headers to the backend request.
   const headers = new Headers();
   const auth = req.headers.get("authorization");
   const contentType = req.headers.get("content-type");
-  const cookie = req.headers.get("cookie");
   if (auth) headers.set("authorization", auth);
   if (contentType) headers.set("content-type", contentType);
-  if (cookie) headers.set("cookie", cookie);
 
   const init: RequestInit = {
     method: req.method,
     headers,
     redirect: "manual",
   };
+  // Step 2 — forward request body for POST/PUT/PATCH/DELETE.
   if (req.method !== "GET" && req.method !== "HEAD") {
     init.body = req.body;
     (init as RequestInit & { duplex: "half" }).duplex = "half";
@@ -34,6 +49,7 @@ async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   try {
     res = await fetch(target, init);
   } catch (error) {
+    // Step 3 — backend down → return 503 JSON the UI can display.
     const detail =
       error instanceof Error ? error.message : "Could not reach the FastAPI backend.";
     return new Response(
@@ -52,6 +68,7 @@ async function proxy(req: NextRequest, path: string[]): Promise<Response> {
     );
   }
 
+  // Step 4 — pass through response headers (disable caching for SSE).
   const out = new Headers();
   const pass = ["content-type", "cache-control", "x-accel-buffering"];
   for (const key of pass) {
@@ -60,27 +77,18 @@ async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   }
   out.set("cache-control", "no-cache, no-transform");
 
-  const setCookies =
-    typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
-  if (setCookies.length) {
-    for (const value of setCookies) {
-      out.append("set-cookie", value);
-    }
-  } else {
-    const single = res.headers.get("set-cookie");
-    if (single) out.set("set-cookie", single);
-  }
-
   if (isStream) {
     out.set("content-type", "text/event-stream; charset=utf-8");
     out.set("x-accel-buffering", "no");
     out.set("connection", "keep-alive");
   }
 
+  // Step 5 — non-stream responses pass through directly.
   if (!isStream || !res.body) {
     return new Response(res.body, { status: res.status, headers: out });
   }
 
+  // Step 6 — stream SSE chunks without buffering the full body.
   const stream = new ReadableStream({
     async start(controller) {
       const reader = res.body!.getReader();

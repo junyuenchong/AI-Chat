@@ -2,6 +2,11 @@
 Conversation application service.
 
 Lists, loads, deletes, and creates chat threads (conversation history).
+
+Request path:
+  api/v1/conversations/router.py
+    → application/conversations/mapper.py
+    → application/conversations/service.py  (this file)
 """
 
 from datetime import UTC, datetime
@@ -68,6 +73,7 @@ class ConversationService:
     async def get_conversation(self, user: User, conversation_id: str) -> Conversation:
         """Load a single conversation and its full message history."""
         try:
+            # Step 1 — load thread + messages, scoped to this user.
             conversation = await self.conversations.get_with_messages(
                 conversation_id, user.id
             )
@@ -83,6 +89,7 @@ class ConversationService:
     async def delete_conversation(self, user: User, conversation_id: str) -> None:
         """Delete one conversation and every message in it."""
         try:
+            # Step 1 — verify the thread belongs to this user.
             conversation = await self.conversations.get_for_user(
                 conversation_id, user.id
             )
@@ -91,6 +98,7 @@ class ConversationService:
         conversation = require_found(conversation, exc=ConversationNotFound)
 
         try:
+            # Step 2 — delete row and commit.
             await self.conversations.delete(conversation)
             await self.conversations.db.commit()
         except SQLAlchemyError as exc:
@@ -110,11 +118,13 @@ class ConversationService:
     ) -> tuple[Conversation, bool]:
         """Return (conversation, was_created). True when a new thread was created."""
         try:
+            # Step 1 — no id means first message in a new chat.
             if not conversation_id:
                 return await _create_new_conversation(
                     self.conversations, user_id, title
                 ), True
 
+            # Step 2 — existing id must belong to this user.
             conversation = await self.conversations.get_for_user(
                 conversation_id, user_id
             )

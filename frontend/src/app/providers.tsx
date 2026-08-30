@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Root app providers — wraps all routes with auth context.
+ *
+ * Request path:
+ *   app/layout.tsx
+ *     → app/providers.tsx  (this file)
+ *     → features/auth/AuthProvider.tsx
+ */
+
 import type { ReactNode } from "react";
 
 import { AuthProvider } from "@/features/auth/AuthProvider";

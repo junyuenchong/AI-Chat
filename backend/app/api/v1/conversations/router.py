@@ -3,6 +3,11 @@ Conversation API routes.
 
 HTTP layer for chat history threads (not the AI call itself).
 Business logic is handled by ConversationService.
+
+Request path:
+  frontend GET /api/v1/conversations
+    → api/v1/conversations/router.py  (this file)
+    → application/conversations/service.py
 """
 
 from uuid import UUID

@@ -62,20 +62,44 @@ describe("auth api", () => {
     );
   });
 
-  it("fetchCurrentUser calls GET /auth/me", async () => {
+  it("fetchCurrentUser returns null when no token is stored", async () => {
+    sessionStorage.clear();
+    const user = await fetchCurrentUser();
+    expect(user).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("fetchCurrentUser calls GET /auth/me when token exists", async () => {
+    sessionStorage.setItem("ai_chat_access_token", "test-token");
     (global.fetch as jest.Mock).mockResolvedValue(
       jsonResponse({ id: "u1", email: "a@b.com", name: "Ada" }),
     );
     const user = await fetchCurrentUser();
-    expect(user.email).toBe("a@b.com");
+    expect(user?.email).toBe("a@b.com");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/v1/auth/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-token",
+        }),
+      }),
+    );
   });
 
-  it("logoutUser calls POST /auth/logout", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue(new Response(null, { status: 204 }));
-    await logoutUser();
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/api/v1/auth/logout",
-      expect.objectContaining({ method: "POST" }),
+  it("fetchCurrentUser clears token on 401", async () => {
+    sessionStorage.setItem("ai_chat_access_token", "stale-token");
+    (global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }, 401),
     );
+    const user = await fetchCurrentUser();
+    expect(user).toBeNull();
+    expect(sessionStorage.getItem("ai_chat_access_token")).toBeNull();
+  });
+
+  it("logoutUser clears stored token", async () => {
+    sessionStorage.setItem("ai_chat_access_token", "test-token");
+    await logoutUser();
+    expect(sessionStorage.getItem("ai_chat_access_token")).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

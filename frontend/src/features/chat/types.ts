@@ -5,6 +5,5 @@ export type ChatBubble = {
 
 export type StreamChatBody = {
   message: string;
-  use_rag: boolean;
   conversation_id?: string;
 };

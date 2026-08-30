@@ -2,6 +2,10 @@
 Security utilities.
 
 Password hashing and JWT token helpers.
+
+Request path:
+  application/auth/service.py
+    → core/security.py  (this file)
 """
 
 from datetime import UTC, datetime, timedelta

@@ -9,18 +9,11 @@ import { useHealth } from "@/features/health/hooks";
 jest.mock("@/features/health/api", () => ({
   fetchHealth: jest.fn().mockResolvedValue({
     status: "ok",
-    llm: "ok",
-    postgres: "ok",
-    redis: "ok",
+    app: "AI Chat",
+    llm: "demo",
+    postgres: true,
   }),
 }));
-
-// ────────────────────────────────────────────────────────────
-// useHealth
-// Feature: health
-// Endpoint: GET /health
-// Use: poll backend dependency status on mount.
-// ────────────────────────────────────────────────────────────
 
 describe("useHealth", () => {
   it("loads health status on mount", async () => {
@@ -29,9 +22,9 @@ describe("useHealth", () => {
     await waitFor(() => {
       expect(result.current.health).toEqual({
         status: "ok",
-        llm: "ok",
-        postgres: "ok",
-        redis: "ok",
+        app: "AI Chat",
+        llm: "demo",
+        postgres: true,
       });
     });
   });

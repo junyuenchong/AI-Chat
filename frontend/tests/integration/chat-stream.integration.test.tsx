@@ -67,7 +67,7 @@ describe("chat stream integration", () => {
 
     expect(onConversationId).toHaveBeenCalledWith("conv-99");
     expect(mockedStreamChat).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "Say hi", use_rag: true }),
+      expect.objectContaining({ message: "Say hi" }),
       expect.any(Function),
     );
   });

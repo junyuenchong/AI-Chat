@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Auth form hook — login and register field state + submit handler.
+ *
+ * Request path:
+ *   features/auth/components/AuthForm.tsx
+ *     → features/auth/hooks.ts  (this file)
+ *     → features/auth/AuthProvider.tsx
+ */
+
 import { useState } from "react";
 
 import type { AuthMode } from "./types";
@@ -26,11 +35,13 @@ export function useAuthForm(mode: AuthMode) {
     setLocalError(null);
     clearError();
     try {
+      // Step 1 — call register or login via AuthProvider.
       if (mode === "register") {
         await register(email, password, name);
       } else {
         await login(email, password);
       }
+      // Step 2 — clear password field after success.
       setPassword("");
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : "Could not sign in.");

@@ -7,7 +7,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AI Chat",
-  description: "Next.js UI for the FastAPI LangChain / RAG chat backend.",
+  description: "Next.js UI for the FastAPI streaming chat backend.",
 };
 
 export const viewport: Viewport = {

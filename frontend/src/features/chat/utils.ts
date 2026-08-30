@@ -16,5 +16,5 @@ export function scrollToBottom(container: HTMLElement | null) {
 
 export function welcomeMessage(signedIn: boolean): string {
   if (!signedIn) return "Sign in to start chatting.";
-  return "New chat. Ask about LangChain, RAG, or your uploaded knowledge.";
+  return "New chat. Send a message to start streaming.";
 }

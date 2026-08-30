@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Conversation context — bridges sidebar selection and chat message loader.
+ *
+ * Request path:
+ *   DashboardLayout → ConversationProvider
+ *     → ChatPage (registers loadMessages / resetBubbles)
+ */
+
 import {
   createContext,
   useCallback,
@@ -43,7 +51,9 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
 
   const selectConversation = useCallback(
     async (id: string) => {
+      // Step 1 — fetch messages from API.
       const messages = await conv.openConversation(id);
+      // Step 2 — push them into the chat pane via registered loader.
       if (messages && messageLoader) messageLoader(messages);
     },
     [conv, messageLoader],
@@ -55,8 +65,9 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
 
   const startNewConversation = useCallback(() => {
     conv.startNewChat();
+    // Clear chat pane and show welcome text for a new thread.
     resetRef.current?.(
-      "New chat. Ask about LangChain, RAG, or your uploaded knowledge.",
+      "New chat. Send a message to start streaming.",
     );
   }, [conv]);
 

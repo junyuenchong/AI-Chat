@@ -1,13 +1,11 @@
-"""Unit tests for auth and document mapping helpers."""
+"""Unit tests for auth mapping helpers."""
 
 from app.infrastructure.database.models import load_models
 
 load_models()
 
 from app.api.v1.auth.dto.request import RegisterRequest
-from app.api.v1.documents.dto.request import CreateDocumentRequest
 from app.application.auth.mapper import AuthMapper
-from app.application.documents.mapper import DocumentsMapper
 from app.core.security import verify_password
 
 
@@ -27,14 +25,3 @@ def test_auth_token_response_never_includes_hash():
     assert token.email == "a@b.com"
     assert token.user_id
     assert "hashed_password" not in token.model_dump()
-
-
-def test_knowledge_mapper_builds_document_entity():
-    request = CreateDocumentRequest(
-        filename="policy.md", content="Annual leave: 14 days."
-    )
-    upload = DocumentsMapper.request_to_upload("user-1", request)
-    doc = DocumentsMapper.upload_to_document(upload)
-    assert doc.user_id == "user-1"
-    assert doc.filename == "policy.md"
-    assert doc.content == "Annual leave: 14 days."

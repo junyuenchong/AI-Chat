@@ -1,15 +1,18 @@
-# AI Chat
+# AI Chat (Question 2)
 
-Full-stack **streaming LLM chat** (Question 2 assignment) with optional **traditional RAG** knowledge grounding.
+Minimal **streaming LLM chat**: FastAPI SSE + Postgres session memory + LangChain + Next.js.
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | Next.js 15, TypeScript, ESLint, Prettier |
-| Backend | FastAPI, Python 3.12, Ruff |
-| AI | LangChain (Gemini or OpenAI) |
-| Data | PostgreSQL + pgvector, Redis |
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS 4 |
+| Backend | FastAPI, Python 3.12 |
+| AI | LangChain — Chat Model + Messages + `astream()` only |
+| Data | PostgreSQL (conversation history) |
+| Auth | JWT Bearer token (`sessionStorage` on the client) |
 
-**Highlights:** SSE token streaming · Postgres session memory · RAG document upload · retry + model failover · Docker Compose · unit / integration / e2e tests
+**Q2 core:** token streaming · chat history in Postgres · JWT auth · Clean Architecture · Docker · tests · inline code comments
+
+**Not in scope:** RAG · vector DB · Redis · worker · LangGraph · agents · tools · cookie sessions
 
 ---
 
@@ -20,9 +23,8 @@ Full-stack **streaming LLM chat** (Question 2 assignment) with optional **tradit
 ```powershell
 cd backend
 Copy-Item .env.example .env
+docker compose down -v --remove-orphans   # optional — fresh DB
 docker compose up --build
-
-# New terminal — after Postgres is up
 docker compose run --rm api alembic upgrade head
 docker compose run --rm api python alembic/seeds/run.py
 ```
@@ -36,139 +38,17 @@ npm install
 npm run dev
 ```
 
-### URLs
-
 | Service | URL |
 | --- | --- |
 | Chat UI | http://localhost:3000 |
 | API docs | http://localhost:8000/docs |
-| Health | http://localhost:8000/api/v1/health |
 | Adminer | http://localhost:8080 |
 
-**Demo login** (after seeding): `demo@example.com` / `demo123`
+**Demo login:** `demo@example.com` / `demo123` (created by seeds)
 
----
+**New email?** Use **Register** first — accounts are not created at login.
 
-## Database migrations & seeds
-
-Run from `backend/`. Full reference: [backend/README.md](backend/README.md#database-migrations--seeds).
-
-### Migrations
-
-| Action | Docker | Local (venv) |
-| --- | --- | --- |
-| Apply all | `docker compose run --rm api alembic upgrade head` | `alembic upgrade head` |
-| Revert last | `docker compose run --rm api alembic downgrade -1` | `alembic downgrade -1` |
-| Current revision | `docker compose run --rm api alembic current` | `alembic current` |
-| New migration | `docker compose run --rm api alembic revision --autogenerate -m "msg"` | `alembic revision --autogenerate -m "msg"` |
-
-### Seeds
-
-| Action | Docker | Local (venv) |
-| --- | --- | --- |
-| Seed demo data | `docker compose run --rm api python alembic/seeds/run.py` | `python alembic/seeds/run.py` |
-| Seed + embed | `docker compose run --rm api python alembic/seeds/run.py --embed` | `python alembic/seeds/run.py --embed` |
-
-**Reset database:**
-
-```powershell
-cd backend
-docker compose down -v
-docker compose up -d postgres redis
-docker compose run --rm api alembic upgrade head
-docker compose run --rm api python alembic/seeds/run.py
-```
-
----
-
-## API overview
-
-Base path: `/api/v1`. Details: [backend/README.md](backend/README.md#api-routes).
-
-| Method | Path | Use |
-| --- | --- | --- |
-| `GET` | `/health` | Service status |
-| `POST` | `/auth/register` | Create account |
-| `POST` | `/auth/login` | Log in |
-| `POST` | `/auth/logout` | Log out |
-| `GET` | `/auth/me` | Current user |
-| `GET` | `/conversations` | List threads |
-| `GET` | `/conversations/{id}` | Load thread |
-| `DELETE` | `/conversations/{id}` | Delete thread |
-| `POST` | `/chat/stream` | Stream reply (SSE) |
-| `POST` | `/chat/complete` | Full reply (JSON) |
-| `GET` | `/documents` | List documents |
-| `POST` | `/documents` | Upload document |
-| `DELETE` | `/documents/{id}` | Delete document |
-
----
-
-## Configuration
-
-| Setting | Behavior |
-| --- | --- |
-| `GEMINI_API_KEY` or `OPENAI_API_KEY` set | Real LLM via LangChain |
-| Keys empty | Demo mode — mock LLM text, real HTTP/DB/SSE |
-| `RAG_STRICT_MODE=true` | Refuse when no knowledge-base hit |
-| `RAG_STRICT_MODE=false` | Fall back to LLM general knowledge |
-| `GEMINI_FALLBACK_MODEL` | Secondary Gemini model when primary fails |
-| `LLM_RETRY_MAX_ATTEMPTS` | Retries on transient errors (429, 503, timeouts) before failover |
-| `LLM_RETRY_BASE_DELAY_SECONDS` | Initial backoff delay between retries |
-| `LLM_RETRY_MAX_DELAY_SECONDS` | Cap on exponential backoff delay |
-
-### Resilience (LLM + embeddings)
-
-```
-Transient error (429/503/timeout)
-  → retry with exponential backoff (up to LLM_RETRY_MAX_ATTEMPTS)
-  → failover to GEMINI_FALLBACK_MODEL or OpenAI
-  → user sees LLM_ERROR if all models fail
-```
-
-RAG retrieval uses a separate fallback chain: **vector search → keyword → first chunks** (hybrid mode only).
-
-Background embed jobs retry up to **3 times** via ARQ (`max_tries` on the worker).
-
----
-
-## Tooling
-
-### Backend (Python)
-
-| Tool | Library | Config | Command |
-| --- | --- | --- | --- |
-| **Test** | pytest, pytest-asyncio, httpx | `pytest.ini` | `docker compose run --rm api pytest` |
-| **Format** | Ruff | `pyproject.toml` | `ruff format .` |
-| **Lint** | Ruff | `pyproject.toml` | `ruff check .` |
-| **Format + lint** | Ruff | `pyproject.toml` | `.\scripts\ruff.ps1` |
-
-```powershell
-cd backend
-docker compose run --rm api pytest -m unit
-docker compose run --rm api pytest -m integration
-.\scripts\ruff.ps1
-```
-
-### Frontend (TypeScript)
-
-| Tool | Library | Config | Command |
-| --- | --- | --- | --- |
-| **TypeScript** | TypeScript 5 (strict) | `tsconfig.json` | `npm run typecheck` |
-| **Lint** | ESLint, eslint-config-next | `.eslintrc.json` | `npm run lint` |
-| **Format** | Prettier, eslint-config-prettier | `.prettierrc` | `npm run format` |
-| **Test** | Jest, React Testing Library | `jest.config.mjs` | `npm test` |
-| **E2E** | Playwright | `playwright.config.ts` | `npm run test:e2e` |
-
-```powershell
-cd frontend
-npm run typecheck
-npm run lint
-npm run format:check
-npm test
-npm run test:e2e
-```
-
-Details: [backend/README.md](backend/README.md#tooling) · [frontend/README.md](frontend/README.md#tooling) · [docs/TESTING.md](docs/TESTING.md)
+Leave `GEMINI_API_KEY` and `OPENAI_API_KEY` empty for **demo mode** (real HTTP, DB, SSE; mock LLM text).
 
 ---
 
@@ -176,14 +56,121 @@ Details: [backend/README.md](backend/README.md#tooling) · [frontend/README.md](
 
 ```
 Browser (Next.js)
-  → api/v1/ (routers + dto)
-  → application/ (services + mappers)
-  → domain/ (entities + ports)
-  → infrastructure/ (LangChain, Postgres, Redis, pgvector)
-  → shared/ (retry helpers, constants)
+   ↓  Authorization: Bearer <JWT>
+/api/v1/[...path]/route.ts   ← same-origin proxy (dev)
+   ↓
+FastAPI (Chat Service)
+   ↓
+┌──────────────┬─────────────────────┐
+│  PostgreSQL  │      LangChain      │
+│  (history)   │  Chat Model         │
+│              │  Messages           │
+│              │  astream()          │
+└──────────────┴─────────────────────┘
+   ↓
+Gemini / OpenAI (or demo mode)
 ```
 
-Details: [backend/README.md](backend/README.md#project-structure)
+**Postgres** stores conversations and messages. **LangChain** only handles LLM calls — not persistence.
+
+---
+
+## Q2 chat flow
+
+```
+User message → save to Postgres → load history → build messages → llm.astream() → SSE tokens → save reply
+```
+
+### LangChain components (Q2 minimal)
+
+| Component | Purpose | Code |
+| --- | --- | --- |
+| **Chat Model** | `ChatGoogleGenerativeAI` / `ChatOpenAI` | `infrastructure/ai/langchain/llm/factory.py` |
+| **Messages** | `SystemMessage`, `HumanMessage`, `AIMessage` | `infrastructure/ai/langchain/llm/messages.py` |
+| **Streaming** | `llm.astream(messages)` | `infrastructure/ai/langchain/llm/provider.py` |
+
+Plain string system prompt (no `ChatPromptTemplate`). History comes from Postgres, not LangChain Memory.
+
+```
+infrastructure/ai/langchain/
+├── llm/          factory, provider, messages
+├── prompts/      SYSTEM_PROMPT string
+├── chains/       ChatChain (history + stream)
+├── callbacks/    stream_llm_tokens helper
+└── adapters/     build_chat_engine()
+```
+
+---
+
+## API overview
+
+Base path: `/api/v1`. Swagger: http://localhost:8000/docs
+
+| Method | Path | Use |
+| --- | --- | --- |
+| `GET` | `/health` | Postgres + LLM provider status |
+| `POST` | `/auth/register` | Create account → JWT |
+| `POST` | `/auth/login` | Log in → JWT |
+| `POST` | `/auth/logout` | No-op (client clears JWT) |
+| `GET` | `/auth/me` | Current user (Bearer token) |
+| `GET` | `/conversations` | List threads |
+| `GET` | `/conversations/{id}` | Load thread + messages |
+| `DELETE` | `/conversations/{id}` | Delete thread |
+| `POST` | `/chat/stream` | Stream reply (SSE) |
+| `POST` | `/chat/complete` | Full reply (JSON) |
+
+### SSE events (`/chat/stream`)
+
+| Event | Payload |
+| --- | --- |
+| `meta` | `conversation_id`, `llm`, `route`, `components` |
+| `token` | `{ "content": "..." }` |
+| `done` | `conversation_id`, `content` |
+| `error` | `{ "code", "message" }` |
+
+---
+
+## Configuration
+
+| Setting | Behavior |
+| --- | --- |
+| `GEMINI_API_KEY` | Real LLM via LangChain (Gemini) |
+| `OPENAI_API_KEY` | Real LLM when Gemini key is empty |
+| Both empty | Demo mode — mock LLM text |
+| `GEMINI_MODEL` | Primary model (default `gemini-3.6-flash`) |
+| `GEMINI_FALLBACK_MODEL` | Secondary model on failure (optional) |
+| `LLM_RETRY_*` | Retry transient API errors |
+| `JWT_SECRET_KEY` | Token signing (min 32 chars in production) |
+
+Full list: [backend/.env.example](backend/.env.example)
+
+---
+
+## Code comments
+
+Source files use a consistent comment style for interview walkthroughs:
+
+- **Module docstring** — request path (which file calls this file)
+- **Boxed block comment** per function — `Path`, `Endpoint`, `Use`
+- **Inline steps** — `# Step 1 — ...` inside methods
+
+Template: `backend/app/application/auth/service.py`
+
+---
+
+## Testing
+
+```powershell
+cd backend
+docker compose run --rm api pytest          # 51 tests — demo mode (no live API)
+
+cd ../frontend
+npm test                                    # 41 tests
+```
+
+Pytest clears LLM API keys automatically so backend tests never call external APIs.
+
+Details: [docs/TESTING.md](docs/TESTING.md) · [docs/PRESENTATION.md](docs/PRESENTATION.md) · [docs/SECURITY.md](docs/SECURITY.md)
 
 ---
 
@@ -191,15 +178,13 @@ Details: [backend/README.md](backend/README.md#project-structure)
 
 ```
 FastApi/
-├── backend/     API, AI, database, Docker Compose
-├── frontend/    Next.js chat UI
-└── docs/        Testing, security, presentation
+├── backend/     API, LangChain, Postgres, Docker
+├── frontend/    Next.js chat UI + SSE proxy
+└── docs/        Testing, presentation, security
 ```
 
 | Document | Contents |
 | --- | --- |
-| [backend/README.md](backend/README.md) | Architecture, API, retry/failover, migrations, seeds, pytest, Ruff |
-| [frontend/README.md](frontend/README.md) | UI, TypeScript, ESLint, Prettier, Jest, Playwright |
-| [docs/TESTING.md](docs/TESTING.md) | Test strategy |
-| [docs/SECURITY.md](docs/SECURITY.md) | Auth and rate limits |
-| [docs/PRESENTATION.md](docs/PRESENTATION.md) | Demo script |
+| [backend/README.md](backend/README.md) | API, migrations, env, pytest, Ruff |
+| [frontend/README.md](frontend/README.md) | Routes, SSE, Jest, Playwright |
+| [docs/PRESENTATION.md](docs/PRESENTATION.md) | 15–20 min demo script |

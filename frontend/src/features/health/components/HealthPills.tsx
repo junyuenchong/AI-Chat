@@ -7,11 +7,10 @@ type HealthPillsProps = {
 
 // ────────────────────────────────────────────────────────
 // HealthPills
-// Feature: health
+// Path: features/health/components/HealthPills.tsx
 // Endpoint: GET /health
-// Use: show llm, postgres, and redis status in the sidebar.
+// Use: show LLM provider and Postgres status in the sidebar.
 // ────────────────────────────────────────────────────────
-
 export function HealthPills({ health }: HealthPillsProps) {
   const pill = (ok: boolean, label: string) => (
     <span
@@ -28,7 +27,6 @@ export function HealthPills({ health }: HealthPillsProps) {
     <div className="mt-2.5 flex flex-wrap gap-2">
       {pill(Boolean(health?.llm && health.llm !== "demo"), health?.llm || "llm")}
       {pill(Boolean(health?.postgres), "postgres")}
-      {pill(Boolean(health?.redis), "redis")}
     </div>
   );
 }

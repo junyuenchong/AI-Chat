@@ -1,9 +1,16 @@
+/**
+ * SSE stream reader — parse Server-Sent Events from POST /chat/stream.
+ *
+ * Request path:
+ *   features/chat/api.ts
+ *     → lib/sse/reader.ts  (this file)
+ */
+
 // ────────────────────────────────────────────────────────
 // parseSsePart
-// Feature: shared
+// Path: lib/sse/reader.ts
 // Use: parse one SSE block (event + data lines) from the stream buffer.
 // ────────────────────────────────────────────────────────
-
 function parseSsePart(
   part: string,
 ): { event: string; data: Record<string, unknown> } | null {
@@ -11,6 +18,7 @@ function parseSsePart(
   if (!trimmed) return null;
   let event = "message";
   const dataLines: string[] = [];
+  // Step 1 — split lines and collect event name + data payload.
   for (const line of trimmed.split("\n")) {
     if (line.startsWith("event:")) event = line.slice(6).trim();
     if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
@@ -26,10 +34,9 @@ function parseSsePart(
 
 // ────────────────────────────────────────────────────────
 // dispatchSseParts
-// Feature: shared
+// Path: lib/sse/reader.ts
 // Use: fan out parsed SSE parts to the chat event handler.
 // ────────────────────────────────────────────────────────
-
 function dispatchSseParts(
   parts: string[],
   onEvent: (event: string, data: Record<string, unknown>) => void,
@@ -42,10 +49,10 @@ function dispatchSseParts(
 
 // ────────────────────────────────────────────────────────
 // readSse
-// Feature: shared
-// Use: read POST /chat/stream body and emit meta, token, done, error events.
+// Path: lib/sse/reader.ts
+// Endpoint: POST /chat/stream
+// Use: read response body and emit meta, token, done, error events.
 // ────────────────────────────────────────────────────────
-
 export async function readSse(
   response: Response,
   onEvent: (event: string, data: Record<string, unknown>) => void,
@@ -57,11 +64,13 @@ export async function readSse(
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
+    // Step 1 — append chunk and split on blank line (SSE frame boundary).
     buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
     const parts = buffer.split("\n\n");
     buffer = parts.pop() ?? ""; // Keep incomplete chunk for the next read.
     dispatchSseParts(parts, onEvent);
   }
+  // Step 2 — flush any trailing data after the stream closes.
   buffer += decoder.decode().replace(/\r\n/g, "\n");
   if (buffer.trim()) {
     dispatchSseParts([buffer], onEvent);

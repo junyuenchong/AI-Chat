@@ -8,7 +8,7 @@ from app.main import create_app
 
 # ────────────────────────────────────────────────────────────
 # test_v1_routes_are_mounted
-# Endpoint: GET /health, POST /auth/login, POST /chat/stream, GET /conversations, GET /documents
+# Endpoint: GET /health, POST /auth/login, POST /chat/stream, GET /conversations
 # Use: confirm core feature routes exist in the OpenAPI schema after app startup.
 # ────────────────────────────────────────────────────────────
 
@@ -18,7 +18,6 @@ def test_v1_routes_are_mounted():
     assert "/api/v1/auth/login" in paths
     assert "/api/v1/chat/stream" in paths
     assert "/api/v1/conversations" in paths
-    assert "/api/v1/documents" in paths
     assert "/api/v1/health" in paths
     assert api_router.routes
 

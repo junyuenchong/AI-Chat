@@ -1,94 +1,80 @@
 """
 Auth API routes.
 
-HTTP layer for registration, login, logout, and profile.
-Business logic is handled by AuthService.
+JWT-only authentication for Q2 demo (no Redis sessions).
+
+Request path:
+  main.py → api/v1/router.py
+    → api/v1/auth/router.py  (this file)
+    → application/auth/service.py
 """
 
 from app.api.v1.auth.dto.request import LoginRequest, RegisterRequest
 from app.api.v1.auth.dto.response import TokenResponse, UserResponse
 from app.application.auth.mapper import AuthMapper
 from app.application.auth.service import AuthService
-from app.core.config import get_settings
-from app.core.cookies import clear_session_cookie, read_session_id, set_session_cookie
 from app.core.dependencies import get_auth_service, get_current_user
-from app.infrastructure.cache.redis import create_session, delete_session
 from app.infrastructure.database.models import User
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, status
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 # ────────────────────────────────────────────────────────
-# _attach_session_cookie
-# Internal — called after register and login.
-# Creates a server session and sets the HttpOnly cookie on the response.
-# ────────────────────────────────────────────────────────
-async def _attach_session_cookie(response: Response, user_id: str) -> None:
-    """Set an HttpOnly session cookie after successful auth."""
-    settings = get_settings()
-    session_id = await create_session(user_id)
-    if session_id:
-        set_session_cookie(response, settings, session_id)
-
-
-# ────────────────────────────────────────────────────────
 # register
+# Path: api/v1/auth/router.py
 # Endpoint: POST /auth/register
-# Creates a new account and starts a browser session.
+# Use: create account and return JWT + user profile.
 # ────────────────────────────────────────────────────────
 @router.post(
     "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
 )
 async def register(
     payload: RegisterRequest,
-    response: Response,
     auth_service: AuthService = Depends(get_auth_service),
 ):
     """Register a new user account."""
+    # Step 1 — map HTTP body to User row.
     user = AuthMapper.register_request_to_user(payload)
+    # Step 2 — persist and issue JWT.
     user = await auth_service.register_user(user)
-    await _attach_session_cookie(response, str(user.id))
     return AuthMapper.user_to_token_response(user)
 
 
 # ────────────────────────────────────────────────────────
 # login
+# Path: api/v1/auth/router.py
 # Endpoint: POST /auth/login
-# Checks email and password, then starts a browser session.
+# Use: verify credentials and return JWT + user profile.
 # ────────────────────────────────────────────────────────
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
-    response: Response,
     auth_service: AuthService = Depends(get_auth_service),
 ):
     """Authenticate with email and password."""
     email, password = AuthMapper.login_credentials(payload)
     user = await auth_service.login_user(email, password)
-    await _attach_session_cookie(response, str(user.id))
     return AuthMapper.user_to_token_response(user)
 
 
 # ────────────────────────────────────────────────────────
 # logout
+# Path: api/v1/auth/router.py
 # Endpoint: POST /auth/logout
-# Revokes the current session and clears the session cookie.
+# Use: no-op — client discards JWT (stateless auth).
 # ────────────────────────────────────────────────────────
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(request: Request, response: Response):
-    """Revoke the current session and clear the session cookie."""
-    settings = get_settings()
-    session_id = read_session_id(request, settings)
-    if session_id:
-        await delete_session(session_id)
-    clear_session_cookie(response, settings)
+async def logout():
+    """Stateless JWT — client discards the token."""
+    return None
 
 
 # ────────────────────────────────────────────────────────
 # me
+# Path: api/v1/auth/router.py
 # Endpoint: GET /auth/me
-# Returns the logged-in user's profile for the app header.
+# Use: return the authenticated user's profile from JWT.
 # ────────────────────────────────────────────────────────
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):

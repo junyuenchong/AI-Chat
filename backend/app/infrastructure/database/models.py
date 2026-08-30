@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -29,7 +28,6 @@ class User(Base):
     )
 
     conversations: Mapped[list[Conversation]] = relationship(back_populates="user")
-    documents: Mapped[list[Document]] = relationship(back_populates="user")
 
 
 class Conversation(Base):
@@ -78,53 +76,8 @@ class Message(Base):
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
 
-class Document(Base):
-    __tablename__ = "documents"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    filename: Mapped[str] = mapped_column(String(255))
-    content: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    user: Mapped[User] = relationship(back_populates="documents")
-    chunks: Mapped[list[DocumentChunk]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
-    )
-
-
-class DocumentChunk(Base):
-    __tablename__ = "document_chunks"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
-    )
-    document_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("documents.id", ondelete="CASCADE"), index=True
-    )
-    chunk_index: Mapped[int] = mapped_column(Integer)
-    content: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
-
-    document: Mapped[Document] = relationship(back_populates="chunks")
-
-
 def load_models() -> None:
     """Register all ORM models (tables bind on class definition)."""
 
 
-__all__ = [
-    "Base",
-    "Conversation",
-    "Document",
-    "DocumentChunk",
-    "Message",
-    "User",
-    "load_models",
-]
+__all__ = ["Base", "Conversation", "Message", "User", "load_models"]

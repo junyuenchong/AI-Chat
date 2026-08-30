@@ -35,8 +35,17 @@ export function AuthForm({ mode }: AuthFormProps) {
         {mode === "login" ? "Sign in" : "Create account"}
       </h1>
       <p className="mt-2 text-[13px] leading-relaxed text-muted">
-        HttpOnly session cookie — no token stored in localStorage.
+        JWT in sessionStorage — sent as Bearer on each request.
       </p>
+      {mode === "login" ? (
+        <p className="mt-2 rounded-[10px] border border-line bg-panel-2 px-3 py-2 text-[12px] leading-relaxed text-muted">
+          Demo account: <span className="text-text">demo@example.com</span> /{" "}
+          <span className="text-text">demo123</span>
+          <br />
+          New email? Use <span className="text-text">Register</span> first — accounts are
+          not created at login.
+        </p>
+      ) : null}
       <form className="mt-4 flex flex-col gap-2.5" onSubmit={onSubmit}>
         {mode === "register" ? (
           <Input

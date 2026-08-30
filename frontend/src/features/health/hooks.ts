@@ -9,7 +9,7 @@ import type { Health } from "./types";
 // useHealth
 // Feature: health
 // Endpoint: GET /health
-// Use: poll backend health for LLM, Postgres, and Redis status pills.
+// Use: poll backend health for LLM and Postgres status pills.
 // ────────────────────────────────────────────────────────
 
 export function useHealth() {

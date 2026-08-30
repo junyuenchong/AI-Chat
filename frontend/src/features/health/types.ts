@@ -3,6 +3,4 @@ export type Health = {
   app: string;
   llm: string;
   postgres?: boolean;
-  redis?: boolean;
-  layers?: Record<string, string>;
 };
