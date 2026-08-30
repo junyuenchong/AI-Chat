@@ -45,9 +45,9 @@ class Settings(BaseSettings):
     gemini_fallback_model: str = ""
     gemini_embedding_model: str = "gemini-embedding-2"
 
-    # When true and use_rag is on, refuse instead of falling back to general LLM knowledge.
+    # When use_rag is on, refuse instead of falling back to general LLM knowledge.
     rag_strict_mode: bool = False
-    # Max pgvector cosine distance for a chunk to count as relevant (0=identical, ~0.5=similar).
+    # Max pgvector cosine distance for a relevant chunk (0=identical, ~0.5=similar).
     rag_max_distance: float = 0.45
 
     # Set JWT_SECRET_KEY in production (min 32 bytes for HS256).

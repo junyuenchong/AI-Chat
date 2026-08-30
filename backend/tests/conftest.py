@@ -86,8 +86,8 @@ async def _ensure_services() -> None:
     if _services_ready:
         return
 
-    from app.core.database import engine, init_db
     from app.infrastructure.cache.redis import init_redis
+    from app.infrastructure.database.session import engine, init_db
 
     last_error: Exception | None = None
     for _ in range(10):

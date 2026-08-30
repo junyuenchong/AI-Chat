@@ -4,11 +4,6 @@ Exception registration.
 Wire global exception handlers onto the FastAPI application.
 """
 
-from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
 from app.core.exceptions.base import AppException
 from app.core.exceptions.handlers import (
     app_exception_handler,
@@ -18,6 +13,10 @@ from app.core.exceptions.handlers import (
     unhandled_error_handler,
     validation_error_handler,
 )
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 # ────────────────────────────────────────────────────────

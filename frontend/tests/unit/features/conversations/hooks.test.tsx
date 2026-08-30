@@ -7,7 +7,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { useConversations } from "@/features/conversations/hooks";
 
 jest.mock("@/features/conversations/api", () => ({
-  listConversations: jest.fn().mockResolvedValue([{ id: "c1", title: "First chat", updated_at: "2026-01-01" }]),
+  listConversations: jest
+    .fn()
+    .mockResolvedValue([{ id: "c1", title: "First chat", updated_at: "2026-01-01" }]),
   getConversation: jest.fn().mockResolvedValue({
     id: "c1",
     title: "First chat",

@@ -4,7 +4,9 @@
 // Use: parse one SSE block (event + data lines) from the stream buffer.
 // ────────────────────────────────────────────────────────
 
-function parseSsePart(part: string): { event: string; data: Record<string, unknown> } | null {
+function parseSsePart(
+  part: string,
+): { event: string; data: Record<string, unknown> } | null {
   const trimmed = part.trim();
   if (!trimmed) return null;
   let event = "message";

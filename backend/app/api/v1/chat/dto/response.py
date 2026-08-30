@@ -1,7 +1,7 @@
 """
 Chat response DTOs.
 
-Pydantic models for non-streaming chat replies.
+HTTP response bodies for non-streaming chat.
 """
 
 from uuid import UUID
@@ -9,11 +9,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
-# ────────────────────────────────────────────────────────
-# ChatCompleteResponse
-# Internal — POST /chat/complete response body.
-# Returns the full AI reply with conversation id and LLM label.
-# ────────────────────────────────────────────────────────
 class ChatCompleteResponse(BaseModel):
     """Non-streaming chat reply with conversation id and LLM label."""
 

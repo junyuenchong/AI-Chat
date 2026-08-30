@@ -55,7 +55,9 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
 
   const startNewConversation = useCallback(() => {
     conv.startNewChat();
-    resetRef.current?.("New chat. Ask about LangChain, RAG, or your uploaded knowledge.");
+    resetRef.current?.(
+      "New chat. Ask about LangChain, RAG, or your uploaded knowledge.",
+    );
   }, [conv]);
 
   const value = useMemo(
@@ -66,10 +68,20 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       registerMessageLoader,
       registerResetHandler,
     }),
-    [conv, selectConversation, startNewConversation, registerMessageLoader, registerResetHandler],
+    [
+      conv,
+      selectConversation,
+      startNewConversation,
+      registerMessageLoader,
+      registerResetHandler,
+    ],
   );
 
-  return <ConversationContext.Provider value={value}>{children}</ConversationContext.Provider>;
+  return (
+    <ConversationContext.Provider value={value}>
+      {children}
+    </ConversationContext.Provider>
+  );
 }
 
 // ────────────────────────────────────────────────────────
@@ -80,6 +92,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
 
 export function useConversationContext(): ConversationContextValue {
   const ctx = useContext(ConversationContext);
-  if (!ctx) throw new Error("useConversationContext must be used within ConversationProvider");
+  if (!ctx)
+    throw new Error("useConversationContext must be used within ConversationProvider");
   return ctx;
 }

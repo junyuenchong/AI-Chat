@@ -30,10 +30,7 @@ export function KnowledgeUpload({
   onSubmit,
 }: KnowledgeUploadProps) {
   return (
-    <form
-      className="flex flex-col gap-2 border-t border-line pt-4"
-      onSubmit={onSubmit}
-    >
+    <form className="flex flex-col gap-2 border-t border-line pt-4" onSubmit={onSubmit}>
       <strong className="text-xs">Upload document</strong>
       <Input
         value={filename}

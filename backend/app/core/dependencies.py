@@ -1,38 +1,32 @@
 """
 FastAPI dependencies.
 
-Auth and service wiring for routers — NOT middleware.
+Auth and service wiring for routers — not middleware.
 
   Middleware  → request id, CORS, security headers, IP rate limit
   Depends()   → get_current_user, get_chat_service, …
   Application → use-cases (register, stream chat, upload document)
 """
 
-from fastapi import Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.application.auth.service import AuthService
 from app.application.chat.service import ChatService
 from app.application.conversations.service import ConversationService
-from app.application.knowledge.service import KnowledgeService
+from app.application.documents.service import DocumentsService
 from app.core.config import get_settings
 from app.core.cookies import read_session_id
-from app.core.database import get_db
 from app.core.exceptions import UnauthorizedError
 from app.core.security import decode_access_token
-from app.infrastructure.cache.session import get_session_user_id
-from app.infrastructure.database.models.user import User
-from app.infrastructure.database.repositories.conversation_repository import (
-    ConversationRepository,
-    MessageRepository,
-)
-from app.infrastructure.database.repositories.document_repository import (
-    DocumentRepository,
-)
-from app.infrastructure.database.repositories.user_repository import UserRepository
-from app.infrastructure.llm.factory import build_llm_port
-from app.infrastructure.llm.langchain_rag import LangChainRetriever
+from app.infrastructure.ai import build_chat_engine
+from app.infrastructure.cache.redis import get_session_user_id
+from app.infrastructure.database.models import User
+from app.infrastructure.database.repositories.chat import MessageRepository
+from app.infrastructure.database.repositories.conversation import ConversationRepository
+from app.infrastructure.database.repositories.document import DocumentRepository
+from app.infrastructure.database.repositories.user import UserRepository
+from app.infrastructure.database.session import get_db
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Kept for OpenAPI, tests, and programmatic clients.
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -84,8 +78,7 @@ async def get_current_user(
     return user
 
 
-_llm_provider = build_llm_port()
-_retriever = LangChainRetriever()
+_chat_engine = build_chat_engine()
 
 
 # ────────────────────────────────────────────────────────
@@ -95,21 +88,18 @@ _retriever = LangChainRetriever()
 # ────────────────────────────────────────────────────────
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     """Build AuthService with its required dependencies."""
-    # One repository per request — session is scoped to the HTTP call.
     return AuthService(UserRepository(db))
 
 
 # ────────────────────────────────────────────────────────
 # get_chat_service
 # Internal — FastAPI dependency for ChatService.
-# Wires LLM provider, retriever, and conversation repositories.
+# Wires chat engine and conversation repositories.
 # ────────────────────────────────────────────────────────
 def get_chat_service(db: AsyncSession = Depends(get_db)) -> ChatService:
     """Build ChatService with its required dependencies."""
-    # LLM and retriever are process-wide singletons; repos are per-request.
     return ChatService(
-        llm=_llm_provider,
-        retriever=_retriever,
+        chat_engine=_chat_engine,
         conversations=ConversationRepository(db),
         messages=MessageRepository(db),
     )
@@ -122,16 +112,14 @@ def get_chat_service(db: AsyncSession = Depends(get_db)) -> ChatService:
 # ────────────────────────────────────────────────────────
 def get_conversation_service(db: AsyncSession = Depends(get_db)) -> ConversationService:
     """Build ConversationService with its required dependencies."""
-    # Thin wrapper — all conversation logic lives in the service layer.
     return ConversationService(ConversationRepository(db))
 
 
 # ────────────────────────────────────────────────────────
-# get_knowledge_service
-# Internal — FastAPI dependency for KnowledgeService.
-# Builds KnowledgeService with a request-scoped document repository.
+# get_documents_service
+# Internal — FastAPI dependency for DocumentsService.
+# Builds DocumentsService with a request-scoped document repository.
 # ────────────────────────────────────────────────────────
-def get_knowledge_service(db: AsyncSession = Depends(get_db)) -> KnowledgeService:
-    """Build KnowledgeService with its required dependencies."""
-    # Document repository is the only infrastructure dependency for uploads/RAG.
-    return KnowledgeService(DocumentRepository(db))
+def get_documents_service(db: AsyncSession = Depends(get_db)) -> DocumentsService:
+    """Build DocumentsService with its required dependencies."""
+    return DocumentsService(DocumentRepository(db))

@@ -50,7 +50,9 @@ describe("AuthForm", () => {
 
   it("renders register title", () => {
     render(<AuthForm mode="register" />);
-    expect(screen.getByRole("heading", { name: /create account/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /create account/i }),
+    ).toBeInTheDocument();
   });
 
   it("calls submit when form is submitted", () => {

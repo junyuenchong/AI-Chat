@@ -63,12 +63,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserEmail(token.email);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name: string) => {
-    setError(null);
-    const token = await registerUser({ email, password, name });
-    setIsAuthenticated(true);
-    setUserEmail(token.email);
-  }, []);
+  const register = useCallback(
+    async (email: string, password: string, name: string) => {
+      setError(null);
+      const token = await registerUser({ email, password, name });
+      setIsAuthenticated(true);
+      setUserEmail(token.email);
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     try {

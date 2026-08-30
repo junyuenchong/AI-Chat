@@ -34,6 +34,12 @@ export async function streamChat(
 // Use: normalize SSE error events into user-visible text.
 // ────────────────────────────────────────────────────────
 
-export function formatStreamError(data: Record<string, unknown>, fallback: string): string {
-  return formatApiError({ error: data as { message?: string; fields?: unknown[] } }, fallback);
+export function formatStreamError(
+  data: Record<string, unknown>,
+  fallback: string,
+): string {
+  return formatApiError(
+    { error: data as { message?: string; fields?: unknown[] } },
+    fallback,
+  );
 }

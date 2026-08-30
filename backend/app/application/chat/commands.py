@@ -1,15 +1,9 @@
 """
 Chat commands.
 
-Re-exports domain command types for application consumers.
+Re-exports domain command types for the application layer.
 """
 
-from app.domain.chat.entities import ChatCommand
+from app.domain.chat.entities import ChatCommand, ChatCompleteResult
 
-# ────────────────────────────────────────────────────────
-# ChatCommand
-# Internal — application command type
-# Re-exported from domain for use by chat service and mapper.
-# ────────────────────────────────────────────────────────
-
-__all__ = ["ChatCommand"]
+__all__ = ["ChatCommand", "ChatCompleteResult"]

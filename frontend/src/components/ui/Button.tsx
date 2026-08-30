@@ -20,7 +20,12 @@ const variantClasses: Record<ButtonVariant, string> = {
 // Use: primary action button used across all features.
 // ────────────────────────────────────────────────────────
 
-export function Button({ children, className, variant = "primary", ...props }: ButtonProps) {
+export function Button({
+  children,
+  className,
+  variant = "primary",
+  ...props
+}: ButtonProps) {
   return (
     <button
       className={cn(

@@ -30,6 +30,10 @@
 
   body {
     @apply font-sans text-text antialiased;
-    background: radial-gradient(1200px 600px at 10% -10%, #1a2b55 0%, var(--color-bg) 45%);
+    background: radial-gradient(
+      1200px 600px at 10% -10%,
+      #1a2b55 0%,
+      var(--color-bg) 45%
+    );
   }
 }

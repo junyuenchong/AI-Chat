@@ -43,7 +43,9 @@ export function useChat({
   }, []);
 
   const loadMessages = useCallback((messages: ChatBubble[]) => {
-    setBubbles(messages.length ? messages : [{ role: "assistant", content: "No messages yet." }]);
+    setBubbles(
+      messages.length ? messages : [{ role: "assistant", content: "No messages yet." }],
+    );
   }, []);
 
   const sendMessage = useCallback(
@@ -72,7 +74,8 @@ export function useChat({
             onConversationId(data.conversation_id);
           }
           const tokenText =
-            (eventName === "token" || eventName === "message") && typeof data.content === "string"
+            (eventName === "token" || eventName === "message") &&
+            typeof data.content === "string"
               ? data.content
               : null;
           if (tokenText) {

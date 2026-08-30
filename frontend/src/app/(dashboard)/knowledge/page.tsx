@@ -29,7 +29,9 @@ export default function KnowledgePage() {
         <div>
           <strong className="text-sm">Knowledge base</strong>
           <br />
-          <span className="text-xs text-muted">Upload text the AI can search during chat (RAG)</span>
+          <span className="text-xs text-muted">
+            Upload text the AI can search during chat (RAG)
+          </span>
         </div>
       </header>
       <div className="flex flex-1 flex-col gap-4 overflow-auto p-5">

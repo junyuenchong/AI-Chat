@@ -2,7 +2,12 @@
  * Unit tests for features/auth/api.ts
  */
 
-import { fetchCurrentUser, loginUser, logoutUser, registerUser } from "@/features/auth/api";
+import {
+  fetchCurrentUser,
+  loginUser,
+  logoutUser,
+  registerUser,
+} from "@/features/auth/api";
 
 import { jsonResponse } from "../../../helpers/mocks";
 
@@ -28,7 +33,11 @@ describe("auth api", () => {
         token_type: "bearer",
       }),
     );
-    const res = await registerUser({ email: "a@b.com", password: "secret12", name: "Ada" });
+    const res = await registerUser({
+      email: "a@b.com",
+      password: "secret12",
+      name: "Ada",
+    });
     expect(res.email).toBe("a@b.com");
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/auth/register",

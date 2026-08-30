@@ -4,10 +4,9 @@ Exception helpers.
 Application-layer helpers that raise domain exceptions.
 """
 
-from sqlalchemy.exc import SQLAlchemyError
-
 from app.core.exceptions.base import AppException
 from app.core.exceptions.domain import NotFoundError
+from sqlalchemy.exc import SQLAlchemyError
 
 
 # ────────────────────────────────────────────────────────

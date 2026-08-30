@@ -1,8 +1,4 @@
-"""
-Application package root.
-
-Top-level exports for the FastAPI app package.
-"""
+"""Application package root."""
 
 from app.core.config import get_settings
 

@@ -4,15 +4,37 @@ Health API routes.
 HTTP layer for dependency probes used by the UI status pills.
 """
 
-from app.api.v1.health.dto.response import HealthLayersResponse, HealthResponse
 from app.core.config import get_settings
-from app.core.database import get_db
 from app.infrastructure.cache.redis import get_redis
+from app.infrastructure.database.session import get_db
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["health"])
+
+
+class HealthLayersResponse(BaseModel):
+    """Human-readable labels for LangChain and RAG layers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    langchain: str
+    rag: str
+
+
+class HealthResponse(BaseModel):
+    """GET /health response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    app: str
+    llm: str
+    postgres: bool
+    redis: bool
+    layers: HealthLayersResponse
 
 
 # ────────────────────────────────────────────────────────

@@ -1,62 +1,31 @@
 # AI Chat
 
-Full-stack chat application with **RAG** (retrieval-augmented generation).
+Full-stack chat app with **RAG** (retrieval-augmented generation).
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | Next.js — chat UI, auth, knowledge upload |
-| Backend | FastAPI — REST API, SSE streaming, background jobs |
-| AI | LangChain — LLM and embeddings (Gemini or OpenAI) |
+| Frontend | Next.js 15, TypeScript, ESLint, Prettier |
+| Backend | FastAPI, Python 3.12, Ruff |
+| AI | LangChain (Gemini or OpenAI) |
 | Data | PostgreSQL + pgvector, Redis |
-
-**Not used:** LangGraph, n8n.
-
----
-
-## What this app does
-
-Users can **register**, **chat** with an AI assistant (streaming or JSON), manage **conversation history**, and upload **knowledge documents** that the AI can search when answering questions.
-
-| Term | Meaning |
-| --- | --- |
-| **Conversation** | One chat thread (shown in the sidebar) |
-| **Message** | A single user or assistant turn inside a conversation |
-| **Knowledge** | Documents uploaded for RAG search |
-| **Document** | One uploaded text file |
-| **Chunk** | A small piece of a document used for search |
-| **RAG** | Search relevant chunks → pass them to the LLM → answer with context |
-
-**Example:** User asks *"What is our leave policy?"* → retriever finds a matching chunk → LLM answers using that text → reply is saved as a message in the conversation.
-
----
-
-## Repository layout
-
-```
-FastApi/
-├── backend/          FastAPI API, AI, database, Docker Compose
-├── frontend/         Next.js chat UI (run with npm)
-└── docs/             Testing, security, and presentation notes
-```
-
-| README | Contents |
-| --- | --- |
-| [backend/README.md](backend/README.md) | Architecture, API routes, Docker, tests |
-| [frontend/README.md](frontend/README.md) | UI setup, API proxy, SSE wiring |
 
 ---
 
 ## Quick start
 
-### 1. Backend (Docker)
+### Backend
 
 ```powershell
 cd backend
 Copy-Item .env.example .env
 docker compose up --build
+
+# New terminal — after Postgres is up
+docker compose run --rm api alembic upgrade head
+docker compose run --rm api python alembic/seeds/run.py
 ```
 
-### 2. Frontend (local)
+### Frontend
 
 ```powershell
 cd frontend
@@ -65,82 +34,152 @@ npm install
 npm run dev
 ```
 
-### 3. Open the app
+### URLs
 
 | Service | URL |
 | --- | --- |
 | Chat UI | http://localhost:3000 |
-| API docs (Swagger) | http://localhost:8000/docs |
-| Health check | http://localhost:8000/api/v1/health |
-| Database UI (Adminer) | http://localhost:8080 |
+| API docs | http://localhost:8000/docs |
+| Health | http://localhost:8000/api/v1/health |
+| Adminer | http://localhost:8080 |
 
-Register or log in from the UI. There is no demo auto-login.
+**Demo login** (after seeding): `demo@example.com` / `demo123`
 
-### LLM modes
+---
 
-| Configuration | Behavior |
-| --- | --- |
-| `GEMINI_API_KEY` or `OPENAI_API_KEY` set | Real LLM via `LangChainProvider` (with fallback chain) |
-| Keys empty | **Demo mode** — `DemoProvider`; real HTTP, DB, and SSE; mock LLM text |
+## Database migrations & seeds
 
-### RAG modes (`RAG_STRICT_MODE`)
+Run from `backend/`. Full reference: [backend/README.md](backend/README.md#database-migrations--seeds).
 
-| Mode | Setting | No relevant KB hit |
+### Migrations
+
+| Action | Docker | Local (venv) |
 | --- | --- | --- |
-| **Strict RAG** | `true` | Refuse — no LLM call (good for internal knowledge bases) |
-| **Hybrid RAG** | `false` | Fall back to LLM general knowledge |
+| Apply all | `docker compose run --rm api alembic upgrade head` | `alembic upgrade head` |
+| Revert last | `docker compose run --rm api alembic downgrade -1` | `alembic downgrade -1` |
+| Current revision | `docker compose run --rm api alembic current` | `alembic current` |
+| New migration | `docker compose run --rm api alembic revision --autogenerate -m "msg"` | `alembic revision --autogenerate -m "msg"` |
 
-Details: [backend/README.md](backend/README.md#llm-and-rag-architecture).
+### Seeds
+
+| Action | Docker | Local (venv) |
+| --- | --- | --- |
+| Seed demo data | `docker compose run --rm api python alembic/seeds/run.py` | `python alembic/seeds/run.py` |
+| Seed + embed | `docker compose run --rm api python alembic/seeds/run.py --embed` | `python alembic/seeds/run.py --embed` |
+
+**Reset database:**
+
+```powershell
+cd backend
+docker compose down -v
+docker compose up -d postgres redis
+docker compose run --rm api alembic upgrade head
+docker compose run --rm api python alembic/seeds/run.py
+```
 
 ---
 
 ## API overview
 
-All routes are under `/api/v1`.
+Base path: `/api/v1`. Details: [backend/README.md](backend/README.md#api-routes).
 
 | Method | Path | Use |
 | --- | --- | --- |
-| `GET` | `/health` | Service status and dependency flags |
-| `POST` | `/auth/register` | Create account and start a session |
-| `POST` | `/auth/login` | Log in and start a session |
-| `POST` | `/auth/logout` | End session and clear cookie |
-| `GET` | `/auth/me` | Load current user profile |
-| `GET` | `/conversations` | List chat threads (sidebar) |
-| `GET` | `/conversations/{id}` | Load one thread with messages |
-| `DELETE` | `/conversations/{id}` | Delete a thread |
-| `POST` | `/chat/stream` | Stream AI reply via SSE |
-| `POST` | `/chat/complete` | Return full AI reply as JSON |
-| `GET` | `/documents` | List uploaded knowledge documents |
-| `POST` | `/documents` | Upload a document for RAG |
-| `DELETE` | `/documents/{id}` | Delete a document |
+| `GET` | `/health` | Service status |
+| `POST` | `/auth/register` | Create account |
+| `POST` | `/auth/login` | Log in |
+| `POST` | `/auth/logout` | Log out |
+| `GET` | `/auth/me` | Current user |
+| `GET` | `/conversations` | List threads |
+| `GET` | `/conversations/{id}` | Load thread |
+| `DELETE` | `/conversations/{id}` | Delete thread |
+| `POST` | `/chat/stream` | Stream reply (SSE) |
+| `POST` | `/chat/complete` | Full reply (JSON) |
+| `GET` | `/documents` | List documents |
+| `POST` | `/documents` | Upload document |
+| `DELETE` | `/documents/{id}` | Delete document |
 
 ---
 
-## Architecture (high level)
+## Configuration
+
+| Setting | Behavior |
+| --- | --- |
+| `GEMINI_API_KEY` or `OPENAI_API_KEY` set | Real LLM via LangChain |
+| Keys empty | Demo mode — mock LLM text, real HTTP/DB/SSE |
+| `RAG_STRICT_MODE=true` | Refuse when no knowledge-base hit |
+| `RAG_STRICT_MODE=false` | Fall back to LLM general knowledge |
+
+---
+
+## Tooling
+
+### Backend (Python)
+
+| Tool | Library | Config | Command |
+| --- | --- | --- | --- |
+| **Test** | pytest, pytest-asyncio, httpx | `pytest.ini` | `docker compose run --rm api pytest` |
+| **Format** | Ruff | `pyproject.toml` | `ruff format .` |
+| **Lint** | Ruff | `pyproject.toml` | `ruff check .` |
+| **Format + lint** | Ruff | `pyproject.toml` | `.\scripts\ruff.ps1` |
+
+```powershell
+cd backend
+docker compose run --rm api pytest -m unit
+docker compose run --rm api pytest -m integration
+.\scripts\ruff.ps1
+```
+
+### Frontend (TypeScript)
+
+| Tool | Library | Config | Command |
+| --- | --- | --- | --- |
+| **TypeScript** | TypeScript 5 (strict) | `tsconfig.json` | `npm run typecheck` |
+| **Lint** | ESLint, eslint-config-next | `.eslintrc.json` | `npm run lint` |
+| **Format** | Prettier, eslint-config-prettier | `.prettierrc` | `npm run format` |
+| **Test** | Jest, React Testing Library | `jest.config.mjs` | `npm test` |
+| **E2E** | Playwright | `playwright.config.ts` | `npm run test:e2e` |
+
+```powershell
+cd frontend
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run test:e2e
+```
+
+Details: [backend/README.md](backend/README.md#tooling) · [frontend/README.md](frontend/README.md#tooling) · [docs/TESTING.md](docs/TESTING.md)
+
+---
+
+## Architecture
 
 ```
 Browser (Next.js)
-    ↓  JSON + SSE (cookie session or Bearer JWT)
-FastAPI routers  →  application services  →  domain ports (LLMPort, RetrieverPort)
-                              ↓
-                    infrastructure (Postgres, Redis, LLM adapters, ARQ worker)
+  → api/v1/ (routers + dto)
+  → application/ (services + mappers)
+  → domain/ (entities + ports)
+  → infrastructure/ (LangChain, Postgres, Redis, pgvector)
 ```
 
-- **Routers** handle HTTP only.
-- **Application** layer owns use-cases and prompt/RAG orchestration (`helpers.py`, `service.py`).
-- **Domain** defines entities and ports (`LLMPort`, `RetrieverPort`).
-- **Infrastructure** implements adapters: `LangChainProvider`, `DemoProvider`, pgvector, Redis.
-
-**LLM error flow:** `LangChainProvider` → `LLMProviderError` → application → SSE `error` / HTTP `LLM_ERROR` (never mixed into token stream).
-
-Details: [backend/README.md](backend/README.md).
+Details: [backend/README.md](backend/README.md#project-structure)
 
 ---
 
-## Further reading
+## Repository
 
-| Document | Purpose |
+```
+FastApi/
+├── backend/     API, AI, database, Docker Compose
+├── frontend/    Next.js chat UI
+└── docs/        Testing, security, presentation
+```
+
+| Document | Contents |
 | --- | --- |
-| [docs/TESTING.md](docs/TESTING.md) | How to run unit, integration, and e2e tests |
-| [docs/SECURITY.md](docs/SECURITY.md) | Sessions, rate limits, auth |
-| [docs/PRESENTATION.md](docs/PRESENTATION.md) | Demo walkthrough script |
+| [backend/README.md](backend/README.md) | Architecture, API, migrations, seeds, pytest, Ruff |
+| [frontend/README.md](frontend/README.md) | UI, TypeScript, ESLint, Prettier, Jest, Playwright |
+| [docs/TESTING.md](docs/TESTING.md) | Test strategy |
+| [docs/SECURITY.md](docs/SECURITY.md) | Auth and rate limits |
+| [docs/PRESENTATION.md](docs/PRESENTATION.md) | Demo script |

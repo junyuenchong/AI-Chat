@@ -25,5 +25,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
   if (!authReady) return <Loading />;
   if (isAuthenticated) return <Loading label="Redirecting…" />;
 
-  return <div className="flex min-h-full items-center justify-center p-6">{children}</div>;
+  return (
+    <div className="flex min-h-full items-center justify-center p-6">{children}</div>
+  );
 }

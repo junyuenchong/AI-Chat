@@ -10,7 +10,7 @@ from app.api.v1.chat.dto.response import ChatCompleteResponse
 from app.application.chat.mapper import ChatMapper
 from app.application.chat.service import ChatService
 from app.core.dependencies import get_chat_service, get_current_user
-from app.infrastructure.database.models.user import User
+from app.infrastructure.database.models import User
 from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
 
@@ -30,10 +30,7 @@ async def chat_stream(
     chat_service: ChatService = Depends(get_chat_service),
 ):
     """Stream a chat reply as Server-Sent Events."""
-    # Map HTTP body to application command with the authenticated user id.
     command = ChatMapper.request_to_command(payload, user.id)
-
-    # Delegate streaming to ChatService — router only wraps SSE.
     return EventSourceResponse(
         chat_service.stream_chat(command, request),
         ping=15,
@@ -53,7 +50,6 @@ async def chat_complete(
     chat_service: ChatService = Depends(get_chat_service),
 ):
     """Send a message and receive the full AI reply as JSON."""
-    # Map HTTP body to application command with the authenticated user id.
     command = ChatMapper.request_to_command(payload, user.id)
-    # Run the full chat pipeline and return the complete reply as JSON.
-    return await chat_service.complete_chat(command)
+    result = await chat_service.complete_chat(command)
+    return ChatMapper.complete_result_to_response(result)

@@ -7,12 +7,13 @@ Business logic is handled by AuthService.
 
 from app.api.v1.auth.dto.request import LoginRequest, RegisterRequest
 from app.api.v1.auth.dto.response import TokenResponse, UserResponse
+from app.application.auth.mapper import AuthMapper
 from app.application.auth.service import AuthService
 from app.core.config import get_settings
 from app.core.cookies import clear_session_cookie, read_session_id, set_session_cookie
 from app.core.dependencies import get_auth_service, get_current_user
-from app.infrastructure.cache.session import create_session, delete_session
-from app.infrastructure.database.models.user import User
+from app.infrastructure.cache.redis import create_session, delete_session
+from app.infrastructure.database.models import User
 from fastapi import APIRouter, Depends, Request, Response, status
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -25,12 +26,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # ────────────────────────────────────────────────────────
 async def _attach_session_cookie(response: Response, user_id: str) -> None:
     """Set an HttpOnly session cookie after successful auth."""
-    # Load cookie name, domain, and TTL from application settings.
     settings = get_settings()
-    # Persist a server-side session and receive its opaque id.
     session_id = await create_session(user_id)
     if session_id:
-        # Attach the session id as an HttpOnly cookie on the outgoing response.
         set_session_cookie(response, settings, session_id)
 
 
@@ -48,12 +46,10 @@ async def register(
     auth_service: AuthService = Depends(get_auth_service),
 ):
     """Register a new user account."""
-    # Delegate account creation; service returns JWT and basic user fields.
-    token = await auth_service.register_user(payload)
-    # Browser clients rely on the HttpOnly cookie; API clients use the JWT in the body.
-    await _attach_session_cookie(response, str(token.user_id))
-    # Return token payload for clients that store the JWT locally.
-    return token
+    user = AuthMapper.register_request_to_user(payload)
+    user = await auth_service.register_user(user)
+    await _attach_session_cookie(response, str(user.id))
+    return AuthMapper.user_to_token_response(user)
 
 
 # ────────────────────────────────────────────────────────
@@ -68,11 +64,10 @@ async def login(
     auth_service: AuthService = Depends(get_auth_service),
 ):
     """Authenticate with email and password."""
-    # Verify credentials and issue a JWT plus user metadata.
-    token = await auth_service.login_user(payload)
-    # Start a browser session so cookie-based clients stay signed in.
-    await _attach_session_cookie(response, str(token.user_id))
-    return token
+    email, password = AuthMapper.login_credentials(payload)
+    user = await auth_service.login_user(email, password)
+    await _attach_session_cookie(response, str(user.id))
+    return AuthMapper.user_to_token_response(user)
 
 
 # ────────────────────────────────────────────────────────
@@ -83,14 +78,10 @@ async def login(
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, response: Response):
     """Revoke the current session and clear the session cookie."""
-    # Read cookie configuration so we can locate the session id.
     settings = get_settings()
-    # Extract the session id from the incoming request cookie, if present.
     session_id = read_session_id(request, settings)
     if session_id:
-        # Remove the session record from Redis so the id can no longer be used.
         await delete_session(session_id)
-    # Expire the session cookie in the browser regardless of Redis outcome.
     clear_session_cookie(response, settings)
 
 
@@ -100,10 +91,6 @@ async def logout(request: Request, response: Response):
 # Returns the logged-in user's profile for the app header.
 # ────────────────────────────────────────────────────────
 @router.get("/me", response_model=UserResponse)
-async def me(
-    user: User = Depends(get_current_user),
-    auth_service: AuthService = Depends(get_auth_service),
-):
+async def me(user: User = Depends(get_current_user)):
     """Return the authenticated user's profile."""
-    # Map the ORM user to a public profile DTO (no password hash).
-    return await auth_service.get_user_profile(user)
+    return AuthMapper.user_to_profile_response(user)

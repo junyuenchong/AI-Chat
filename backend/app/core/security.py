@@ -8,9 +8,8 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
-from jwt import InvalidTokenError
-
 from app.core.config import get_settings
+from jwt import InvalidTokenError
 
 
 # ────────────────────────────────────────────────────────

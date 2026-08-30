@@ -2,7 +2,14 @@
  * Unit tests for lib/api/client.ts — URL building and error formatting.
  */
 
-import { apiJson, apiUrl, authHeaders, formatApiError, readError, streamUrl } from "@/lib/api/client";
+import {
+  apiJson,
+  apiUrl,
+  authHeaders,
+  formatApiError,
+  readError,
+  streamUrl,
+} from "@/lib/api/client";
 
 import { jsonResponse } from "../../../helpers/mocks";
 
@@ -32,7 +39,12 @@ describe("apiUrl", () => {
 describe("formatApiError", () => {
   it("returns message and field errors", () => {
     const text = formatApiError(
-      { error: { message: "Invalid", fields: [{ field: "email", message: "Required" }] } },
+      {
+        error: {
+          message: "Invalid",
+          fields: [{ field: "email", message: "Required" }],
+        },
+      },
       "fallback",
     );
     expect(text).toContain("Invalid");

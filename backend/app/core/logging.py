@@ -6,10 +6,9 @@ Process-wide logging setup and per-user request throttling.
 
 import logging
 
-from redis.asyncio import Redis
-
 from app.core.config import get_settings
 from app.core.exceptions import RateLimitError
+from redis.asyncio import Redis
 
 
 # ────────────────────────────────────────────────────────

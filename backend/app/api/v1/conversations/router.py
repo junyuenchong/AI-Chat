@@ -11,9 +11,10 @@ from app.api.v1.conversations.dto.response import (
     ConversationDetailResponse,
     ConversationResponse,
 )
+from app.application.conversations.mapper import ConversationMapper
 from app.application.conversations.service import ConversationService
 from app.core.dependencies import get_conversation_service, get_current_user
-from app.infrastructure.database.models.user import User
+from app.infrastructure.database.models import User
 from fastapi import APIRouter, Depends, status
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -30,8 +31,8 @@ async def list_conversations(
     conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """List all conversations for the authenticated user."""
-    # Fetch conversation metadata for the sidebar, scoped to the current user.
-    return await conversation_service.list_conversations(user)
+    rows = await conversation_service.list_conversations(user)
+    return [ConversationMapper.conversation_to_list_item(row) for row in rows]
 
 
 # ────────────────────────────────────────────────────────
@@ -46,8 +47,10 @@ async def get_conversation(
     conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """Get a single conversation with its full message history."""
-    # Load one thread and verify ownership before returning messages.
-    return await conversation_service.get_conversation(user, str(conversation_id))
+    conversation = await conversation_service.get_conversation(
+        user, str(conversation_id)
+    )
+    return ConversationMapper.conversation_with_messages(conversation)
 
 
 # ────────────────────────────────────────────────────────
@@ -62,5 +65,4 @@ async def delete_conversation(
     conversation_service: ConversationService = Depends(get_conversation_service),
 ):
     """Delete a conversation and its messages."""
-    # Remove the thread and all associated messages for the current user.
     await conversation_service.delete_conversation(user, str(conversation_id))

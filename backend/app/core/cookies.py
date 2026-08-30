@@ -4,9 +4,8 @@ Session cookie helpers.
 HttpOnly cookie read/write for browser-based authentication.
 """
 
-from fastapi import Request, Response
-
 from app.core.config import Settings
+from fastapi import Request, Response
 
 
 # ────────────────────────────────────────────────────────

@@ -3,7 +3,10 @@ import type { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BACKEND = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const BACKEND = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(
+  /\/$/,
+  "",
+);
 
 async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   const search = new URL(req.url).search;

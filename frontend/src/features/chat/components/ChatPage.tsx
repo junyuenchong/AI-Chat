@@ -61,7 +61,9 @@ export function ChatPage() {
         <div>
           <strong className="text-sm">{activeTitle}</strong>
           <br />
-          <span className="text-xs text-muted">Next.js · FastAPI · LangChain · RAG · SSE</span>
+          <span className="text-xs text-muted">
+            Next.js · FastAPI · LangChain · RAG · SSE
+          </span>
         </div>
         <a
           href={`${API_BASE}/docs`}
@@ -74,8 +76,15 @@ export function ChatPage() {
       </header>
       <MessageList bubbles={bubbles} streaming={streaming} messagesRef={messagesRef} />
       {error ? <div className="px-5 pb-2 text-xs text-warn">{error}</div> : null}
-      <div className="px-5 pb-2 text-xs text-muted">Session cookie + SSE via same-origin proxy.</div>
-      <ChatInput value={input} streaming={streaming} onChange={setInput} onSubmit={sendMessage} />
+      <div className="px-5 pb-2 text-xs text-muted">
+        Session cookie + SSE via same-origin proxy.
+      </div>
+      <ChatInput
+        value={input}
+        streaming={streaming}
+        onChange={setInput}
+        onSubmit={sendMessage}
+      />
     </>
   );
 }

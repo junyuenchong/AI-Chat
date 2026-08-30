@@ -31,7 +31,9 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <div className="w-full max-w-md rounded-2xl border border-line bg-panel/95 p-6">
-      <h1 className="text-xl font-semibold">{mode === "login" ? "Sign in" : "Create account"}</h1>
+      <h1 className="text-xl font-semibold">
+        {mode === "login" ? "Sign in" : "Create account"}
+      </h1>
       <p className="mt-2 text-[13px] leading-relaxed text-muted">
         HttpOnly session cookie — no token stored in localStorage.
       </p>

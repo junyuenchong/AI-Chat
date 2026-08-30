@@ -23,7 +23,9 @@ describe("KnowledgeList", () => {
   it("renders document filenames", () => {
     render(
       <KnowledgeList
-        documents={[{ id: "d1", filename: "policy.md", created_at: "2026-01-01T00:00:00Z" }]}
+        documents={[
+          { id: "d1", filename: "policy.md", created_at: "2026-01-01T00:00:00Z" },
+        ]}
       />,
     );
     expect(screen.getByText("policy.md")).toBeInTheDocument();

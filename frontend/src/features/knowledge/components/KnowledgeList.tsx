@@ -14,7 +14,11 @@ type KnowledgeListProps = {
 
 export function KnowledgeList({ documents }: KnowledgeListProps) {
   if (!documents.length) {
-    return <p className="text-xs text-muted">No documents yet. Upload text below for RAG search.</p>;
+    return (
+      <p className="text-xs text-muted">
+        No documents yet. Upload text below for RAG search.
+      </p>
+    );
   }
   return (
     <div className="flex flex-col gap-2">

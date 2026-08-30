@@ -54,7 +54,12 @@ describe("MessageList", () => {
 describe("ChatInput", () => {
   it("disables send when streaming", () => {
     render(
-      <ChatInput value="hi" streaming={true} onChange={jest.fn()} onSubmit={jest.fn()} />,
+      <ChatInput
+        value="hi"
+        streaming={true}
+        onChange={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
     );
     expect(screen.getByRole("button", { name: /sending/i })).toBeDisabled();
   });
@@ -62,7 +67,12 @@ describe("ChatInput", () => {
   it("calls onSubmit when form is submitted", () => {
     const onSubmit = jest.fn((e) => e.preventDefault());
     render(
-      <ChatInput value="hello" streaming={false} onChange={jest.fn()} onSubmit={onSubmit} />,
+      <ChatInput
+        value="hello"
+        streaming={false}
+        onChange={jest.fn()}
+        onSubmit={onSubmit}
+      />,
     );
     fireEvent.submit(screen.getByRole("button", { name: /send/i }).closest("form")!);
     expect(onSubmit).toHaveBeenCalled();

@@ -20,11 +20,11 @@ IMPORT_REPLACEMENTS = [
     (r"\bapp\.services\.conversation\b", "app.modules.conversations.service"),
     (r"\bapp\.services\.knowledge\b", "app.modules.knowledge.service"),
     (r"\bapp\.services\.auth\b", "app.modules.auth.service"),
-    (r"\bapp\.clients\.redis\b", "app.infrastructure.cache.redis"),
-    (r"\bapp\.clients\.session\b", "app.infrastructure.cache.session"),
-    (r"\bapp\.clients\.queue\b", "app.infrastructure.queue.queue"),
-    (r"\bapp\.jobs\.tasks\b", "app.infrastructure.jobs.tasks"),
-    (r"\bapp\.jobs\.worker\b", "app.infrastructure.queue.worker"),
+    (r"\bapp\.clients\.redis\b", "app.infrastructure.redis.client"),
+    (r"\bapp\.clients\.session\b", "app.infrastructure.redis.session"),
+    (r"\bapp\.clients\.queue\b", "app.infrastructure.external.queue"),
+    (r"\bapp\.jobs\.tasks\b", "app.infrastructure.external.tasks"),
+    (r"\bapp\.jobs\.worker\b", "app.infrastructure.external.worker"),
     (r"\bapp\.ai\.llm\.factory\b", "app.infrastructure.ai.llm"),
     (r"\bapp\.ai\.llm\.providers\b", "app.modules.chat.providers"),
     (r"\bapp\.ai\.prompts\.chat\b", "app.modules.chat.prompts"),
@@ -77,7 +77,9 @@ def merge_repository_conversations() -> str:
     conv = (APP / "db/conversation.py").read_text(encoding="utf-8")
     msg = (APP / "db/message.py").read_text(encoding="utf-8")
     msg = msg.replace('"""Message queries for chat history and persistence."""\n\n', "")
-    msg = msg.replace("from app.models.message import Message\n\n", "")
+    msg = msg.replace(
+        "from app.infrastructure.database.models.message import Message\n\n", ""
+    )
     return (
         '"""Conversation and message persistence."""\n\n'
         + conv.split("\n", 1)[1]
@@ -126,7 +128,7 @@ def merge_retriever() -> str:
         '"""pgvector similarity search over document_chunks."""\n\n', ""
     )
     pgvector = pgvector.replace(
-        "from app.models.document import Document, DocumentChunk\n\n",
+        "from app.infrastructure.database.models.document import Document, DocumentChunk\n\n",
         "",
     )
     chunker = chunker.replace(

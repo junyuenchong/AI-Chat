@@ -7,8 +7,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { useDocuments } from "@/features/knowledge/hooks";
 
 jest.mock("@/features/knowledge/api", () => ({
-  listDocuments: jest.fn().mockResolvedValue([{ id: "d1", filename: "a.md", created_at: "2026-01-01" }]),
-  uploadDocument: jest.fn().mockResolvedValue({ id: "d2", filename: "b.md", created_at: "2026-01-02" }),
+  listDocuments: jest
+    .fn()
+    .mockResolvedValue([{ id: "d1", filename: "a.md", created_at: "2026-01-01" }]),
+  uploadDocument: jest
+    .fn()
+    .mockResolvedValue({ id: "d2", filename: "b.md", created_at: "2026-01-02" }),
 }));
 
 // ────────────────────────────────────────────────────────────

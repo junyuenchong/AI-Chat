@@ -24,6 +24,20 @@ class ChatCommand:
 
 
 # ────────────────────────────────────────────────────────
+# ChatCompleteResult
+# Internal — domain layer
+# Application result for one non-streaming chat turn (HTTP response source).
+# ────────────────────────────────────────────────────────
+@dataclass(frozen=True, slots=True)
+class ChatCompleteResult:
+    """Application result for one non-streaming chat turn."""
+
+    conversation_id: str
+    content: str
+    llm: str
+
+
+# ────────────────────────────────────────────────────────
 # ChatMessage
 # Internal — domain layer
 # One message in the LLM conversation (role plus text content).
@@ -39,8 +53,6 @@ class ChatMessage(TypedDict):
 # Outcome of a non-streaming chat turn (route, RAG context, answer).
 # ────────────────────────────────────────────────────────
 class ChatResult(TypedDict):
-    """Result of a non-streaming chat turn."""
-
     route: str
     rag_context: str | None
     answer: str

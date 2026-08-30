@@ -1,17 +1,80 @@
 # Testing methodology
 
-Assignment Question 2 asks you to **explain test cases built to assure quality**.  
-Tests mirror **production behavior** — same routes, JWT, SSE contract, Postgres persistence, rate-limit code path.
+Tests mirror **production behavior** — same routes, JWT/cookie auth, SSE contract, Postgres persistence, rate-limit code path.
+
+---
+
+## Tooling overview
+
+| Layer | Test | Format / lint | Type check |
+| --- | --- | --- | --- |
+| **Backend** | pytest, pytest-asyncio, httpx | Ruff (`pyproject.toml`) | type hints + Pylance |
+| **Frontend** | Jest, React Testing Library, Playwright | ESLint + Prettier | TypeScript (`tsconfig.json`) |
+
+Details: [../backend/README.md](../backend/README.md#tooling) · [../frontend/README.md](../frontend/README.md#tooling)
+
+---
 
 ## Pyramid
 
 ```
         E2E          live HTTP — register → chat → stream
        /   \
-  Integration    full API + Postgres (docker)
+  Integration    full API + Postgres (Docker)
      /     \
-   Unit          ai/chat routing, LLM helpers, rate limit, DTOs
+   Unit          mappers, RAG routing, LLM helpers, rate limit, DTOs
 ```
+
+---
+
+## Backend commands
+
+Run from `backend/`.
+
+```powershell
+docker compose up -d --build
+
+docker compose run --rm api pytest
+docker compose run --rm api pytest -m unit
+docker compose run --rm api pytest -m integration
+docker compose run --rm -e E2E_BASE_URL=http://api:8000 api pytest -m e2e
+.\scripts\ruff.ps1
+```
+
+### Migrations & seeds (test setup)
+
+| Action | Docker |
+| --- | --- |
+| Apply migrations | `docker compose run --rm api alembic upgrade head` |
+| Seed demo data | `docker compose run --rm api python alembic/seeds/run.py` |
+| Reset DB | `docker compose down -v` then migrate + seed again |
+
+---
+
+## Frontend commands
+
+Run from `frontend/`.
+
+```powershell
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run test:e2e
+```
+
+| Action | Command |
+| --- | --- |
+| TypeScript | `npm run typecheck` |
+| ESLint | `npm run lint` |
+| Prettier check | `npm run format:check` |
+| Jest (all) | `npm test` |
+| Jest unit | `npm run test:unit` |
+| Jest components | `npm run test:components` |
+| Jest integration | `npm run test:integration` |
+| Playwright e2e | `npm run test:e2e` |
+
+---
 
 ## Chat coverage (production-aligned)
 
@@ -30,43 +93,30 @@ Tests mirror **production behavior** — same routes, JWT, SSE contract, Postgre
 | RAG fail-soft on retriever error | Unit | `test_optional_rag_fail_soft_on_retriever_error` |
 | Cookie session auth | Integration | `test_session_auth.py` |
 | Stable error messages | Unit | `test_errors_envelope.py` |
+| DTO / mapper layer | Unit | `test_mapping.py` (AuthMapper, DocumentsMapper) |
 
-## Commands
+---
 
-```powershell
-cd backend
-docker compose up -d --build
-
-# All
-docker compose run --rm api pytest
-
-# Unit only — no Postgres
-docker compose run --rm api pytest -m unit
-
-# Integration — chat + auth + knowledge
-docker compose run --rm api pytest -m integration
-
-# E2E — running API
-docker compose run --rm -e E2E_BASE_URL=http://api:8000 api pytest -m e2e
-```
-
-## Unit tests (`pytest -m unit`)
+## Backend unit tests (`pytest -m unit`)
 
 **No Docker. No Postgres.**
 
 | Area | File |
 | --- | --- |
-| Security | `tests/services/test_security.py` |
-| Rate limit logic | `tests/services/test_rate_limit.py` |
-| DTOs / errors | `tests/api/test_errors.py` |
-| Mapping | `tests/api/test_mapping.py` |
-| Routes | `tests/api/test_router.py` |
-| Chat AI flow | `tests/ai/test_chat.py` |
-| LLM helpers | `tests/ai/test_llm_providers.py` |
-| Retriever (mocked) | `tests/ai/test_retrieve_unit.py` |
-| Prompts / chunker | `tests/ai/test_prompts.py` |
+| Security | `tests/unit/services/test_security.py` |
+| Rate limit logic | `tests/unit/services/test_rate_limit.py` |
+| DTOs / errors | `tests/unit/api/test_errors.py` |
+| Error envelope | `tests/unit/api/test_errors_envelope.py` |
+| Mappers | `tests/unit/api/test_mapping.py` |
+| Routes | `tests/unit/api/test_router.py` |
+| Chat AI flow | `tests/unit/ai/test_chat.py` |
+| LLM helpers | `tests/unit/ai/test_llm_providers.py` |
+| Retriever (mocked) | `tests/unit/ai/test_retrieve_unit.py` |
+| Prompts | `tests/unit/ai/test_prompts.py` |
 
-## Integration tests (`pytest -m integration`)
+---
+
+## Backend integration tests (`pytest -m integration`)
 
 Uses `httpx.AsyncClient` + real Postgres. Fixture `auth_user` = register per test (isolation).
 
@@ -74,25 +124,79 @@ Uses `httpx.AsyncClient` + real Postgres. Fixture `auth_user` = register per tes
 | --- | --- |
 | `test_health.py` | Public health |
 | `test_auth_api.py` | Register, login, 401 |
-| `test_chat_api.py` | **Full chat production paths** |
+| `test_session_auth.py` | Cookie session auth |
+| `test_chat_api.py` | Full chat production paths |
 | `test_knowledge_api.py` | Documents + RAG chat |
 
-## E2E tests (`pytest -m e2e`)
+---
+
+## Backend E2E tests (`pytest -m e2e`)
 
 Hits the same URLs as Next.js (`E2E_BASE_URL`).
+
+| File | Focus |
+| --- | --- |
+| `test_smoke.py` | Register → chat → stream smoke |
+
+---
+
+## Frontend tests
+
+### Jest
+
+| Area | Folder |
+| --- | --- |
+| API clients | `tests/unit/features/*/api.test.ts` |
+| Hooks | `tests/unit/features/*/hooks.test.tsx` |
+| SSE reader | `tests/unit/lib/sse/reader.test.ts` |
+| Components | `tests/components/` |
+| Integration | `tests/integration/` |
+
+### Playwright
+
+| File | Focus |
+| --- | --- |
+| `tests/e2e/auth.spec.ts` | Login / register |
+| `tests/e2e/chat.spec.ts` | Chat UI |
+| `tests/e2e/knowledge.spec.ts` | Document upload |
+
+Requires backend at `http://localhost:8000`.
+
+---
 
 ## Production patterns used
 
 - **Fixtures** — `auth_user`, `api_client`, `fake_redis` (rate limit without real Redis)
-- **Helpers** — `chat_complete()`, `chat_stream_events()` (DRY, same as UI calls)
+- **Helpers** — `chat_complete()`, `chat_stream_events()` (same shapes as UI calls)
 - **Isolation** — unique email per test; no shared conversation state
 - **Assert contracts** — SSE event order, error codes (`UNAUTHORIZED`, `NOT_FOUND`, `RATE_LIMITED`)
 - **Fail-soft paths** — retriever errors tested at unit layer
 
+### Infrastructure under test
+
+| Concern | Module | How tests cover it |
+| --- | --- | --- |
+| Sessions | `infrastructure/cache/redis.py` | `fake_redis` patches `get_redis` |
+| Rate limits | `core/middleware.py` + cache | Unit logic + integration 429 |
+| Vector search | `infrastructure/ai/langchain/retrieval.py` + `infrastructure/vector/pgvector.py` | Retriever unit tests (mocked DB) |
+| Background jobs | `infrastructure/messaging/` | Manual demo (ARQ worker) |
+
+---
+
 ## Not automated (manual demo)
 
-- Browser UI clicks
 - Real Gemini/OpenAI answer quality
-- ARQ summarize after 4 messages
+- ARQ summarize after 4 messages (`messaging/tasks/cleanup.py`)
+- Document embedding worker (`messaging/tasks/document.py`)
 
-Presentation: [PRESENTATION.md](PRESENTATION.md)
+---
+
+## Related docs
+
+| Document | Purpose |
+| --- | --- |
+| [PRESENTATION.md](PRESENTATION.md) | Demo script |
+| [SECURITY.md](SECURITY.md) | Auth and rate limits |
+| [../README.md](../README.md) | Project overview |
+| [../backend/README.md](../backend/README.md) | Backend tooling |
+| [../frontend/README.md](../frontend/README.md) | Frontend tooling |

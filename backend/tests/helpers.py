@@ -55,7 +55,6 @@ def patch_get_redis(monkeypatch, fake: FakeRedis) -> None:
         "app.infrastructure.cache.redis.get_redis",
         "app.core.middleware.get_redis",
         "app.application.chat.service.get_redis",
-        "app.infrastructure.cache.session.get_redis",
         "app.api.v1.health.router.get_redis",
     )
     for target in targets:

@@ -27,7 +27,9 @@ describe("knowledge upload integration", () => {
     mockUploadDocument.mockReset();
     mockListDocuments
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: "new-doc", filename: "handbook.md", created_at: "2026-01-01" }]);
+      .mockResolvedValueOnce([
+        { id: "new-doc", filename: "handbook.md", created_at: "2026-01-01" },
+      ]);
     mockUploadDocument.mockResolvedValue({
       id: "new-doc",
       filename: "handbook.md",

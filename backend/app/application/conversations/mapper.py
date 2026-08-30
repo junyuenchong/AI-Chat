@@ -9,8 +9,7 @@ from app.api.v1.conversations.dto.response import (
     ConversationResponse,
     MessageResponse,
 )
-from app.infrastructure.database.models.conversation import Conversation
-from app.infrastructure.database.models.message import Message
+from app.infrastructure.database.models import Conversation, Message
 
 
 class ConversationMapper:
@@ -24,7 +23,6 @@ class ConversationMapper:
     @staticmethod
     def conversation_to_list_item(conversation: Conversation) -> ConversationResponse:
         """Return title and dates for the sidebar — messages are loaded separately."""
-        # Expose metadata only — messages are fetched on thread open.
         return ConversationResponse(
             id=conversation.id,
             title=conversation.title,
@@ -41,7 +39,6 @@ class ConversationMapper:
     @staticmethod
     def message_to_response(message: Message) -> MessageResponse:
         """Return role (user/assistant), content, and timestamp for one message."""
-        # Map one stored message into the chat history item shape.
         return MessageResponse(
             id=message.id,
             conversation_id=message.conversation_id,
@@ -60,7 +57,6 @@ class ConversationMapper:
         conversation: Conversation,
     ) -> ConversationDetailResponse:
         """Return conversation metadata and every message in the thread."""
-        # Combine thread metadata with the full message list.
         return ConversationDetailResponse(
             id=conversation.id,
             title=conversation.title,

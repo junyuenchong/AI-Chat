@@ -30,12 +30,17 @@ export function streamUrl(path: string): string {
 // Use: turn backend error JSON into a readable string for the UI.
 // ────────────────────────────────────────────────────────
 
-export function formatApiError(payload: ApiErrorBody | unknown, fallback: string): string {
+export function formatApiError(
+  payload: ApiErrorBody | unknown,
+  fallback: string,
+): string {
   const body = payload as ApiErrorBody;
   const err = body?.error ?? (payload as ApiErrorBody["error"]);
   if (!err) return fallback;
   const message =
-    typeof err.message === "string" && err.message.trim() ? err.message.trim() : fallback;
+    typeof err.message === "string" && err.message.trim()
+      ? err.message.trim()
+      : fallback;
   const fields = Array.isArray(err.fields) ? err.fields : [];
   const fieldText = fields
     .map((item) => `${item.field ? `${item.field}: ` : ""}${item.message || ""}`)

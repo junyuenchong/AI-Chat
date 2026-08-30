@@ -32,7 +32,9 @@ test.describe("auth", () => {
     await page.getByRole("button", { name: /register/i }).click();
 
     // Authenticated shell: sidebar brand and user email.
-    await expect(page.getByRole("heading", { name: /ai chat/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /ai chat/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText(email)).toBeVisible();
     await expect(page).toHaveURL(/\/chat/);
   });

@@ -8,7 +8,10 @@ import { Button } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Loading";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { ConversationSidebar } from "@/features/conversations/components/ConversationSidebar";
-import { ConversationProvider, useConversationContext } from "@/features/conversations/ConversationProvider";
+import {
+  ConversationProvider,
+  useConversationContext,
+} from "@/features/conversations/ConversationProvider";
 import { HealthPills } from "@/features/health/components/HealthPills";
 import { useHealth } from "@/features/health/hooks";
 import { cn } from "@/lib/utils";
@@ -23,13 +26,8 @@ function DashboardSidebar() {
   const pathname = usePathname();
   const { logout, userEmail } = useAuth();
   const { health } = useHealth();
-  const {
-    conversations,
-    activeId,
-    refresh,
-    selectConversation,
-    startNewConversation,
-  } = useConversationContext();
+  const { conversations, activeId, refresh, selectConversation, startNewConversation } =
+    useConversationContext();
 
   const isChat = pathname === "/chat";
 
@@ -92,7 +90,12 @@ function DashboardSidebar() {
       ) : null}
 
       <div className="mt-auto border-t border-line p-3">
-        <Button type="button" variant="ghost" className="w-full" onClick={() => void logout()}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={() => void logout()}
+        >
           Log out
         </Button>
       </div>

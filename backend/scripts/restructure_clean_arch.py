@@ -13,26 +13,29 @@ IMPORT_REPLACEMENTS = [
     (r"\bapp\.modules\.chat\b", "app.application.chat"),
     (r"\bapp\.modules\.auth\b", "app.application.auth"),
     (r"\bapp\.modules\.conversations\b", "app.application.conversations"),
-    (r"\bapp\.modules\.knowledge\b", "app.application.knowledge"),
+    (r"\bapp\.modules\.knowledge\b", "app.application.documents"),
     (r"\bapp\.api\.v1\.auth\.mapping\b", "app.application.auth.mapper"),
     (r"\bapp\.api\.v1\.chat\.mapping\b", "app.application.chat.mapper"),
     (
         r"\bapp\.api\.v1\.conversations\.mapping\b",
         "app.application.conversations.mapper",
     ),
-    (r"\bapp\.api\.v1\.knowledge\.mapping\b", "app.application.knowledge.mapper"),
-    (r"\bapp\.infrastructure\.database\.session\b", "app.core.database"),
+    (r"\bapp\.api\.v1\.knowledge\.mapping\b", "app.application.documents.mapper"),
+    (
+        r"\bapp\.infrastructure\.database\.session\b",
+        "app.infrastructure.database.session",
+    ),
     (
         r"\bapp\.modules\.conversations\.repository\b",
         "app.infrastructure.database.repositories.chat_repository",
     ),
     (
         r"\bapp\.modules\.auth\.repository\b",
-        "app.infrastructure.database.repositories.user_repository",
+        "app.infrastructure.database.repositories.user",
     ),
     (
         r"\bapp\.modules\.knowledge\.repository\b",
-        "app.infrastructure.database.repositories.document_repository",
+        "app.infrastructure.database.repositories.document",
     ),
     (
         r"\bapp\.infrastructure\.ai\.langchain\b",
@@ -206,11 +209,9 @@ def merge_langchain_provider() -> str:
         "from app.infrastructure.ai.langchain import build_lc_messages, chunk_text\n"
         "from app.infrastructure.ai.llm import get_chat_model\n"
         "from app.modules.chat.prompts import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_PROMPT\n",
-        "from app.application.chat.prompts import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_PROMPT\n",
+        "from app.ai.prompts.chat import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_PROMPT\n",
     )
-    providers = providers.replace(
-        "app.modules.chat.prompts", "app.application.chat.prompts"
-    )
+    providers = providers.replace("app.modules.chat.prompts", "app.ai.prompts.chat")
     body = (
         '"""LangChain LLM provider — factory, messages, stream, complete, summarize."""\n\n'
         + llm.split("\n", 1)[1].strip()
@@ -222,7 +223,7 @@ def merge_langchain_provider() -> str:
     )
     body = body.replace(
         "from app.modules.chat.prompts import SYSTEM_PROMPT, with_rag_context",
-        "from app.application.chat.prompts import SYSTEM_PROMPT, with_rag_context",
+        "from app.ai.prompts.chat import SYSTEM_PROMPT, with_rag_context",
     )
     return body
 
@@ -296,18 +297,18 @@ def strip_chat_result_from_service(content: str) -> str:
         "from app.infrastructure.ai.langchain_provider import complete_reply, stream_reply\n",
     )
     content = content.replace(
-        "from app.application.knowledge.retriever import retrieve_context\n",
+        "from app.application.documents.retriever import retrieve_context\n",
         "from app.infrastructure.knowledge.retriever import retrieve_context\n",
     )
     content = content.replace(
         "from app.api.v1.chat.dto import ChatCompleteResponse, ChatRequest\n",
-        "from app.api.v1.chat.dto.request import ChatRequest\n"
-        "from app.api.v1.chat.dto.response import ChatCompleteResponse\n",
+        "from app.api.v1.chat.dto import ChatRequest\n"
+        "from app.api.v1.chat.dto import ChatCompleteResponse\n",
     )
     content = content.replace(
         "from app.api.v1.chat.schemas import ChatCompleteResponse, ChatRequest\n",
-        "from app.api.v1.chat.dto.request import ChatRequest\n"
-        "from app.api.v1.chat.dto.response import ChatCompleteResponse\n",
+        "from app.api.v1.chat.dto import ChatRequest\n"
+        "from app.api.v1.chat.dto import ChatCompleteResponse\n",
     )
     return content
 
@@ -382,7 +383,7 @@ def main() -> None:
     # --- session shim for backwards compat during import sweep ---
     write(
         APP / "infrastructure/database/session.py",
-        '"""Deprecated — use app.core.database."""\n\nfrom app.core.database import *  # noqa: F403\n',
+        '"""Deprecated — use app.infrastructure.database.session."""\n\nfrom app.infrastructure.database.session import *  # noqa: F403\n',
     )
 
     # --- sweep imports ---

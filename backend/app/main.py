@@ -10,12 +10,12 @@ from fastapi import FastAPI
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.core.database import init_db
 from app.core.exceptions.register import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import setup_middleware
 from app.infrastructure.cache.redis import close_redis, init_redis
-from app.infrastructure.queue.queue import close_queue, init_queue
+from app.infrastructure.database.session import init_db
+from app.infrastructure.messaging.queue import close_queue, init_queue
 
 
 # ────────────────────────────────────────────────────────

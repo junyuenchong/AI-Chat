@@ -6,12 +6,6 @@ FastAPI handlers that always return JSON, never HTML or traceback.
 
 import logging
 
-from fastapi import Request, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
 from app.core.config import get_settings
 from app.core.exceptions.base import AppException
 from app.core.exceptions.envelope import (
@@ -20,6 +14,11 @@ from app.core.exceptions.envelope import (
     field_errors_from_validation,
     http_error_message,
 )
+from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
 

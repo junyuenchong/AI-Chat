@@ -20,14 +20,13 @@ from __future__ import annotations
 import logging
 import uuid
 
+from app.core.config import Settings, get_settings
+from app.core.exceptions import RateLimitError, error_body
+from app.infrastructure.cache.redis import get_redis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
-
-from app.core.config import Settings, get_settings
-from app.core.exceptions import RateLimitError, error_body
-from app.infrastructure.cache.redis import get_redis
 
 logger = logging.getLogger(__name__)
 
