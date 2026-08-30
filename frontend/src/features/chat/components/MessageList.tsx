@@ -19,7 +19,10 @@ type MessageListProps = {
 
 export function MessageList({ bubbles, streaming, messagesRef }: MessageListProps) {
   return (
-    <div ref={messagesRef} className="flex flex-1 flex-col gap-3 overflow-auto p-5">
+    <div
+      ref={messagesRef}
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4 sm:p-5"
+    >
       {bubbles.map((bubble, index) => (
         <MessageItem
           key={`${bubble.role}-${index}`}

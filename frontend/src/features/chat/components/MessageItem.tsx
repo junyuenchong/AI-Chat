@@ -19,7 +19,7 @@ export function MessageItem({ bubble, showTyping }: MessageItemProps) {
     <div
       data-role={bubble.role}
       className={cn(
-        "max-w-[760px] whitespace-pre-wrap break-words rounded-[14px] px-3.5 py-3 leading-relaxed",
+        "max-w-full whitespace-pre-wrap break-words rounded-[14px] px-3.5 py-3 leading-relaxed sm:max-w-[760px]",
         isUser ? "ml-auto bg-user" : "border border-line bg-ai",
       )}
     >

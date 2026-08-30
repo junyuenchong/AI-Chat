@@ -35,8 +35,8 @@ export function ConversationSidebar({
           )}
           onClick={() => onSelect(row.id)}
         >
-          <div>{row.title}</div>
-          <small className="mt-1 block text-[11px] opacity-80">
+          <div className="truncate">{row.title}</div>
+          <small className="mt-1 block truncate text-[11px] opacity-80">
             {row.summary ? row.summary.slice(0, 80) : ""}
           </small>
         </button>

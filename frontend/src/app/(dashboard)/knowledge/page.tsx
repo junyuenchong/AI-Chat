@@ -24,17 +24,16 @@ export default function KnowledgePage() {
   } = useDocuments();
 
   return (
-    <>
-      <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
-        <div>
-          <strong className="text-sm">Knowledge base</strong>
-          <br />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="min-w-0">
+          <strong className="block text-sm">Knowledge base</strong>
           <span className="text-xs text-muted">
             Upload text the AI can search during chat (RAG)
           </span>
         </div>
       </header>
-      <div className="flex flex-1 flex-col gap-4 overflow-auto p-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4 sm:p-5">
         <KnowledgeList documents={documents} />
         {error ? <div className="text-xs text-warn">{error}</div> : null}
         <KnowledgeUpload
@@ -46,6 +45,6 @@ export default function KnowledgePage() {
           onSubmit={submitUpload}
         />
       </div>
-    </>
+    </div>
   );
 }

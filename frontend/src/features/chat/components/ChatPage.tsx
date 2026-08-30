@@ -56,12 +56,11 @@ export function ChatPage() {
   const error = convError || chatError;
 
   return (
-    <>
-      <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
-        <div>
-          <strong className="text-sm">{activeTitle}</strong>
-          <br />
-          <span className="text-xs text-muted">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="min-w-0">
+          <strong className="block truncate text-sm">{activeTitle}</strong>
+          <span className="hidden text-xs text-muted sm:inline">
             Next.js · FastAPI · LangChain · RAG · SSE
           </span>
         </div>
@@ -69,14 +68,14 @@ export function ChatPage() {
           href={`${API_BASE}/docs`}
           target="_blank"
           rel="noreferrer"
-          className="text-[13px] text-accent no-underline"
+          className="shrink-0 text-[13px] text-accent no-underline"
         >
           OpenAPI
         </a>
       </header>
       <MessageList bubbles={bubbles} streaming={streaming} messagesRef={messagesRef} />
-      {error ? <div className="px-5 pb-2 text-xs text-warn">{error}</div> : null}
-      <div className="px-5 pb-2 text-xs text-muted">
+      {error ? <div className="px-4 pb-2 text-xs text-warn sm:px-5">{error}</div> : null}
+      <div className="hidden px-4 pb-2 text-xs text-muted sm:block sm:px-5">
         Session cookie + SSE via same-origin proxy.
       </div>
       <ChatInput
@@ -85,6 +84,6 @@ export function ChatPage() {
         onChange={setInput}
         onSubmit={sendMessage}
       />
-    </>
+    </div>
   );
 }
