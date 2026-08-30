@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     gemini_fallback_model: str = ""
     gemini_embedding_model: str = "gemini-embedding-2"
 
+    # Transient LLM/embedding failures: retry with exponential backoff before failover.
+    llm_retry_max_attempts: int = 3
+    llm_retry_base_delay_seconds: float = 0.5
+    llm_retry_max_delay_seconds: float = 8.0
+
     # When use_rag is on, refuse instead of falling back to general LLM knowledge.
     rag_strict_mode: bool = False
     # Max pgvector cosine distance for a relevant chunk (0=identical, ~0.5=similar).

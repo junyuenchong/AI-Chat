@@ -16,7 +16,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from app.core.config import get_settings
-from app.infrastructure.ai.langchain.llm import get_embeddings
+from app.infrastructure.ai.langchain.embeddings import embed_query
 from app.infrastructure.database.models import Document, DocumentChunk
 from app.infrastructure.database.session import SessionLocal
 from app.infrastructure.vector.pgvector import search_similar_chunks
@@ -118,13 +118,11 @@ async def _vector_search(
     db: AsyncSession, user_id: str, query: str, k: int
 ) -> str | None:
     """Find nearest chunks by cosine distance."""
-    # Step 1: get embedding client (None in demo mode).
-    embeddings = get_embeddings()
-    if embeddings is None:
+    # Step 1: convert query text to a vector (with retry on transient API errors).
+    vector = await embed_query(query)
+    if vector is None:
         return None
-    # Step 2: convert query text to a vector.
-    vector = await embeddings.aembed_query(query)
-    # Step 3: search pgvector, scoped to this user.
+    # Step 2: search pgvector, scoped to this user.
     rows = await search_similar_chunks(
         db,
         user_id,

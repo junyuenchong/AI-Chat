@@ -38,7 +38,8 @@ application/*/mapper.py → application/*/service.py
 domain/entities.py + ports.py (ChatEngine)
    ▼
 infrastructure/
-   ├─ ai/langchain/     LLM, RAG, agent (5 files)
+   ├─ ai/langchain/     LLM, embeddings, RAG, agent (6 files)
+   ├─ shared/retry.py   exponential backoff for transient API errors
    ├─ database/         Postgres + repositories
    ├─ vector/           pgvector queries
    ├─ cache/redis.py    sessions + rate limits
@@ -56,13 +57,26 @@ infrastructure/
 | Layer | Uses LangChain? | Path |
 | --- | --- | --- |
 | LLM stream / complete | Yes | `infrastructure/ai/langchain/llm.py` |
-| Embeddings | Yes | `infrastructure/ai/langchain/llm.py` |
+| Embeddings | Yes | `infrastructure/ai/langchain/embeddings.py` |
 | Prompts | Yes | `infrastructure/ai/langchain/prompts.py` |
 | RAG retrieval | Partial | `infrastructure/ai/langchain/retrieval.py` + `infrastructure/vector/pgvector.py` |
 | Orchestration | Yes | `infrastructure/ai/langchain/agent.py` (`ChatAgent` implements `ChatEngine`) |
 | HTTP / auth / DB | No | FastAPI + SQLAlchemy |
 
 > "Traditional RAG — retrieve context, then generate. Not agentic RAG."
+
+---
+
+## Slide 4b — Resilience (30 sec)
+
+**Say:**
+
+- Transient LLM errors (429, 503, timeout) → **retry with exponential backoff** (`shared/retry.py`)
+- Still failing → **failover** to `GEMINI_FALLBACK_MODEL`, then OpenAI
+- RAG retrieval has its own fallback: vector → keyword → first chunks
+- ARQ embed jobs retry up to 3 times
+
+**Config:** `LLM_RETRY_MAX_ATTEMPTS`, `LLM_RETRY_BASE_DELAY_SECONDS`, `GEMINI_FALLBACK_MODEL`
 
 ---
 
@@ -170,7 +184,7 @@ docker compose run --rm api python alembic/seeds/run.py
 
 | Layer | Command | Covers |
 | --- | --- | --- |
-| **Unit** | `pytest -m unit` | Mappers, RAG routing, rate limit, DTOs |
+| **Unit** | `pytest -m unit` | Mappers, RAG routing, retry, LLM failover, rate limit, DTOs |
 | **Integration** | `pytest -m integration` | JWT, multi-turn, SSE, 404, 429 |
 | **E2E** | `pytest -m e2e` | Live register → chat → stream |
 | **Format + lint** | `.\scripts\ruff.ps1` | Ruff |
@@ -205,7 +219,8 @@ Details: [TESTING.md](TESTING.md)
 | `infrastructure/vector/` | pgvector queries |
 | `infrastructure/cache/` | Redis sessions + rate limits |
 | `infrastructure/messaging/` | ARQ queue + worker |
-| `infrastructure/ai/langchain/` | LangChain (5 files) |
+| `infrastructure/ai/langchain/` | LangChain (6 files) |
+| `shared/retry.py` | Exponential backoff |
 
 Health: `GET /api/v1/health`
 
@@ -220,6 +235,7 @@ Health: `GET /api/v1/health`
 5. _Why separate cache/ and messaging/?_ — Same Redis, different responsibilities.
 6. _Migrations vs seeds?_ — `alembic/versions/` = schema; `alembic/seeds/` = reference data.
 7. _Frontend quality stack?_ — TypeScript strict + ESLint + Prettier + Jest + Playwright.
+8. _Retry vs failover?_ — Retry same model on transient errors; failover switches to a different model/provider after retries exhaust.
 
 ---
 
@@ -238,4 +254,4 @@ Health: `GET /api/v1/health`
 
 ## One-line close
 
-> "FastAPI streams LangChain tokens over SSE, Postgres gives the LLM memory, clean layers keep LangChain swappable, and tests cover unit logic through live smoke — all in Docker."
+> "FastAPI streams LangChain tokens over SSE, Postgres gives the LLM memory, retry + failover handle transient API errors, and tests cover unit logic through live smoke — all in Docker."

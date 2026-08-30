@@ -91,6 +91,8 @@ npm run test:e2e
 | Rate limit → 429 | Unit + Integration | `test_rate_limit_*`, `test_chat_rate_limit_returns_429` |
 | RAG route when chunks found | Unit | `test_optional_rag_uses_rag_route_when_context_found` |
 | RAG fail-soft on retriever error | Unit | `test_optional_rag_fail_soft_on_retriever_error` |
+| LLM retry on transient error | Unit | `test_llm_retry.py` |
+| Retry helper (backoff, non-retryable) | Unit | `test_retry.py` |
 | Cookie session auth | Integration | `test_session_auth.py` |
 | Stable error messages | Unit | `test_errors_envelope.py` |
 | DTO / mapper layer | Unit | `test_mapping.py` (AuthMapper, DocumentsMapper) |
@@ -110,9 +112,11 @@ npm run test:e2e
 | Mappers | `tests/unit/api/test_mapping.py` |
 | Routes | `tests/unit/api/test_router.py` |
 | Chat AI flow | `tests/unit/ai/test_chat.py` |
+| LLM retry + failover | `tests/unit/ai/test_llm_retry.py` |
 | LLM helpers | `tests/unit/ai/test_llm_providers.py` |
 | Retriever (mocked) | `tests/unit/ai/test_retrieve_unit.py` |
 | Prompts | `tests/unit/ai/test_prompts.py` |
+| Retry helpers | `tests/unit/shared/test_retry.py` |
 
 ---
 
@@ -179,15 +183,16 @@ Requires backend at `http://localhost:8000`.
 | Sessions | `infrastructure/cache/redis.py` | `fake_redis` patches `get_redis` |
 | Rate limits | `core/middleware.py` + cache | Unit logic + integration 429 |
 | Vector search | `infrastructure/ai/langchain/retrieval.py` + `infrastructure/vector/pgvector.py` | Retriever unit tests (mocked DB) |
-| Background jobs | `infrastructure/messaging/` | Manual demo (ARQ worker) |
+| LLM retry / failover | `shared/retry.py` + `infrastructure/ai/langchain/llm.py` | `test_retry.py`, `test_llm_retry.py` |
+| Background jobs | `infrastructure/messaging/` | ARQ `max_tries=3`; manual demo for worker |
 
 ---
 
 ## Not automated (manual demo)
 
 - Real Gemini/OpenAI answer quality
-- ARQ summarize after 4 messages (`messaging/tasks/cleanup.py`)
-- Document embedding worker (`messaging/tasks/document.py`)
+- ARQ summarize after 4 messages (`messaging/tasks/cleanup.py`) — worker retries up to 3 times
+- Document embedding worker (`messaging/tasks/document.py`) — worker retries up to 3 times
 
 ---
 

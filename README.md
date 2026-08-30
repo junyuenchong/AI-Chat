@@ -1,6 +1,6 @@
 # AI Chat
 
-Full-stack chat app with **RAG** (retrieval-augmented generation).
+Full-stack **streaming LLM chat** (Question 2 assignment) with optional **traditional RAG** knowledge grounding.
 
 | Layer | Technology |
 | --- | --- |
@@ -8,6 +8,8 @@ Full-stack chat app with **RAG** (retrieval-augmented generation).
 | Backend | FastAPI, Python 3.12, Ruff |
 | AI | LangChain (Gemini or OpenAI) |
 | Data | PostgreSQL + pgvector, Redis |
+
+**Highlights:** SSE token streaming · Postgres session memory · RAG document upload · retry + model failover · Docker Compose · unit / integration / e2e tests
 
 ---
 
@@ -109,6 +111,23 @@ Base path: `/api/v1`. Details: [backend/README.md](backend/README.md#api-routes)
 | Keys empty | Demo mode — mock LLM text, real HTTP/DB/SSE |
 | `RAG_STRICT_MODE=true` | Refuse when no knowledge-base hit |
 | `RAG_STRICT_MODE=false` | Fall back to LLM general knowledge |
+| `GEMINI_FALLBACK_MODEL` | Secondary Gemini model when primary fails |
+| `LLM_RETRY_MAX_ATTEMPTS` | Retries on transient errors (429, 503, timeouts) before failover |
+| `LLM_RETRY_BASE_DELAY_SECONDS` | Initial backoff delay between retries |
+| `LLM_RETRY_MAX_DELAY_SECONDS` | Cap on exponential backoff delay |
+
+### Resilience (LLM + embeddings)
+
+```
+Transient error (429/503/timeout)
+  → retry with exponential backoff (up to LLM_RETRY_MAX_ATTEMPTS)
+  → failover to GEMINI_FALLBACK_MODEL or OpenAI
+  → user sees LLM_ERROR if all models fail
+```
+
+RAG retrieval uses a separate fallback chain: **vector search → keyword → first chunks** (hybrid mode only).
+
+Background embed jobs retry up to **3 times** via ARQ (`max_tries` on the worker).
 
 ---
 
@@ -161,6 +180,7 @@ Browser (Next.js)
   → application/ (services + mappers)
   → domain/ (entities + ports)
   → infrastructure/ (LangChain, Postgres, Redis, pgvector)
+  → shared/ (retry helpers, constants)
 ```
 
 Details: [backend/README.md](backend/README.md#project-structure)
@@ -178,7 +198,7 @@ FastApi/
 
 | Document | Contents |
 | --- | --- |
-| [backend/README.md](backend/README.md) | Architecture, API, migrations, seeds, pytest, Ruff |
+| [backend/README.md](backend/README.md) | Architecture, API, retry/failover, migrations, seeds, pytest, Ruff |
 | [frontend/README.md](frontend/README.md) | UI, TypeScript, ESLint, Prettier, Jest, Playwright |
 | [docs/TESTING.md](docs/TESTING.md) | Test strategy |
 | [docs/SECURITY.md](docs/SECURITY.md) | Auth and rate limits |

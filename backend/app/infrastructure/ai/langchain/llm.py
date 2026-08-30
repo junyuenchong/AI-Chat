@@ -21,6 +21,7 @@ from app.infrastructure.ai.langchain.prompts import (
     SYSTEM_PROMPT,
     append_rag_context,
 )
+from app.shared.retry import backoff_delay, is_retryable_error, retry_async
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
@@ -268,12 +269,20 @@ _CHAT_BUILDERS: dict[str, Callable[[Settings], Any]] = {
 
 
 class LangChainLLM:
-    """LLMPort — LangChain astream / ainvoke with fallback chain."""
+    """LLMPort — LangChain astream / ainvoke with per-model retry + fallback chain."""
 
     def __init__(self, model_chain: list[tuple[str, Any]]) -> None:
         if not model_chain:
             raise ValueError("LangChainLLM requires at least one model.")
         self._model_chain = model_chain
+
+    def _retry_settings(self) -> tuple[int, float, float]:
+        cfg = get_settings()
+        return (
+            cfg.llm_retry_max_attempts,
+            cfg.llm_retry_base_delay_seconds,
+            cfg.llm_retry_max_delay_seconds,
+        )
 
     # ────────────────────────────────────────────────────────
     # stream
@@ -281,19 +290,41 @@ class LangChainLLM:
     # Yields AI reply tokens one at a time for live streaming.
     # ────────────────────────────────────────────────────────
     async def stream(self, messages: list[ChatMessage]) -> AsyncIterator[str]:
-        """Stream reply tokens — tries each model in the chain on failure."""
+        """Stream reply tokens — retries transient errors, then tries next model."""
         lc_messages = to_lc_messages(messages)
+        max_attempts, base_delay, max_delay = self._retry_settings()
         last_exc: Exception | None = None
         for label, llm in self._model_chain:
-            try:
-                async for chunk in llm.astream(lc_messages):
-                    text = _parse_stream_chunk(chunk.content)
-                    if text:
-                        yield text
-                return
-            except Exception as exc:
-                logger.warning("LLM stream failed for %s", label, exc_info=exc)
-                last_exc = exc
+            for attempt in range(max_attempts):
+                yielded_any = False
+                try:
+                    async for chunk in llm.astream(lc_messages):
+                        text = _parse_stream_chunk(chunk.content)
+                        if text:
+                            yielded_any = True
+                            yield text
+                    return
+                except Exception as exc:
+                    logger.warning(
+                        "LLM stream failed for %s (attempt %s/%s)",
+                        label,
+                        attempt + 1,
+                        max_attempts,
+                        exc_info=exc,
+                    )
+                    last_exc = exc
+                    if yielded_any:
+                        break
+                    is_last_attempt = attempt >= max_attempts - 1
+                    if is_last_attempt or not is_retryable_error(exc):
+                        break
+                    delay = backoff_delay(
+                        attempt, base=base_delay, max_delay=max_delay
+                    )
+                    logger.warning(
+                        "Retrying LLM stream for %s in %.2fs", label, delay
+                    )
+                    await asyncio.sleep(delay)
         raise LLMProviderError.from_exception(last_exc)
 
     # ────────────────────────────────────────────────────────
@@ -302,14 +333,25 @@ class LangChainLLM:
     # Returns the full AI reply in one call (non-streaming).
     # ────────────────────────────────────────────────────────
     async def complete(self, messages: list[ChatMessage]) -> str:
-        """Return the full reply in one call."""
+        """Return the full reply — retries transient errors, then tries next model."""
         lc_messages = to_lc_messages(messages)
+        max_attempts, base_delay, max_delay = self._retry_settings()
         last_exc: Exception | None = None
         for label, llm in self._model_chain:
             try:
-                result = await llm.ainvoke(lc_messages)
-                content = result.content
-                return content if isinstance(content, str) else str(content)
+
+                async def _invoke(current_llm: Any = llm) -> str:
+                    result = await current_llm.ainvoke(lc_messages)
+                    content = result.content
+                    return content if isinstance(content, str) else str(content)
+
+                return await retry_async(
+                    _invoke,
+                    max_attempts=max_attempts,
+                    base_delay=base_delay,
+                    max_delay=max_delay,
+                    label=f"LLM complete ({label})",
+                )
             except Exception as exc:
                 logger.warning("LLM complete failed for %s", label, exc_info=exc)
                 last_exc = exc

@@ -18,8 +18,8 @@ from app.infrastructure.ai.langchain.retrieval import retrieve_context
 @pytest.mark.asyncio
 async def test_retrieve_context_keyword_match(monkeypatch):
     monkeypatch.setattr(
-        "app.infrastructure.ai.langchain.retrieval.get_embeddings",
-        lambda: None,
+        "app.infrastructure.ai.langchain.retrieval.embed_query",
+        AsyncMock(return_value=None),
     )
 
     mock_result = MagicMock()
@@ -43,8 +43,8 @@ async def test_retrieve_context_keyword_match(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_context_returns_none_when_no_chunks(monkeypatch):
     monkeypatch.setattr(
-        "app.infrastructure.ai.langchain.retrieval.get_embeddings",
-        lambda: None,
+        "app.infrastructure.ai.langchain.retrieval.embed_query",
+        AsyncMock(return_value=None),
     )
 
     mock_result = MagicMock()

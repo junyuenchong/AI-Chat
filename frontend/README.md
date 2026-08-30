@@ -110,6 +110,8 @@ frontend/
 
 Handled in `features/chat/hooks.ts` via `lib/sse/reader.ts`.
 
+The backend retries transient LLM failures (429, 503, timeouts) with exponential backoff and model failover before emitting `error`.
+
 ---
 
 ## Environment

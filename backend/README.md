@@ -150,14 +150,16 @@ backend/
 │   ├── api/v1/            # routers + dto/request.py + dto/response.py
 │   ├── application/       # services + mapper.py per feature
 │   ├── domain/            # entities.py + ports.py
-│   ├── shared/            # constants, types
+│   ├── shared/            # constants, types, retry helpers
 │   └── infrastructure/
-│       ├── ai/langchain/  # llm, prompts, retrieval, tools, agent
+│       ├── ai/langchain/  # llm, embeddings, prompts, retrieval, tools, agent
 │       ├── database/      # models, repositories, session
 │       ├── vector/        # pgvector queries
 │       ├── cache/         # redis
 │       └── messaging/     # ARQ queue, worker, tasks
 ```
+
+`shared/retry.py` — exponential backoff for transient LLM/embedding API errors.
 
 ### Request flow
 
@@ -177,22 +179,40 @@ HTTP Request
 
 ---
 
-## LLM and RAG
+## LLM, RAG, and resilience
 
 | Component | Role |
 | --- | --- |
 | `application/chat/service.py` | Use case — persistence, SSE, rate limits |
 | `domain/chat/ports.py` | `ChatEngine` port |
 | `infrastructure/ai/langchain/agent.py` | RAG routing + stream/complete |
-| `infrastructure/ai/langchain/llm.py` | LLM + embeddings |
+| `infrastructure/ai/langchain/llm.py` | LLM providers + model failover chain |
+| `infrastructure/ai/langchain/embeddings.py` | Embeddings with retry |
 | `infrastructure/ai/langchain/retrieval.py` | pgvector + keyword search |
+| `shared/retry.py` | Exponential backoff for transient API errors |
+
+### RAG modes
 
 | `RAG_STRICT_MODE` | No KB hit |
 | --- | --- |
 | `true` | Refuse — no LLM call |
 | `false` | Fall back to LLM general knowledge |
 
-Retrieval order: vector search → keyword → fallback chunks (hybrid only).
+Retrieval order: **vector search → keyword → fallback chunks** (hybrid only).
+
+### LLM resilience
+
+Per model, on transient failure (429, 503, timeout):
+
+1. **Retry** with exponential backoff (`LLM_RETRY_*` settings)
+2. **Failover** to `GEMINI_FALLBACK_MODEL`, then OpenAI (if key configured)
+3. Return `LLM_ERROR` to the client if all models fail
+
+Streaming retries only **before** the first token is sent (no partial-stream retry).
+
+Embeddings (`embed_query`, `embed_text_chunks`) use the same retry settings.
+
+ARQ worker: `max_tries = 3` for `process_document` and `summarize_conversation`.
 
 ---
 
@@ -256,6 +276,8 @@ POST /chat/stream → rate limit → save message → RAG (optional)
 | `done` | `conversation_id`, `content`, `route`, `rag` |
 | `error` | `{ "code": "LLM_ERROR", "message": "..." }` |
 
+Transient LLM failures are retried (exponential backoff + model failover) before an `error` event is sent.
+
 ### Document upload
 
 ```
@@ -266,10 +288,10 @@ Without an API key, keyword search still works; embeddings stay empty.
 
 ### Background jobs
 
-| Job | Trigger | Action |
-| --- | --- | --- |
-| `process_document` | After upload | Chunk + embed → pgvector |
-| `summarize_conversation` | Every 4 messages | LLM summary → `Conversation.summary` |
+| Job | Trigger | Action | Retries |
+| --- | --- | --- | --- |
+| `process_document` | After upload | Chunk + embed → pgvector | Up to 3 (ARQ) |
+| `summarize_conversation` | Every 4 messages | LLM summary → `Conversation.summary` | Up to 3 (ARQ) |
 
 Worker: `arq app.infrastructure.messaging.worker.WorkerSettings` (Docker `worker` service).
 
@@ -297,6 +319,10 @@ Copy `.env.example` → `.env`. All keys in `app/core/config.py`.
 | `REDIS_URL` | `redis://redis:6379/0` | Use `localhost` for local Python |
 | `GEMINI_API_KEY` | _(empty)_ | Empty = demo mode |
 | `GEMINI_MODEL` | `gemini-3.6-flash` | Primary chat model |
+| `GEMINI_FALLBACK_MODEL` | _(empty)_ | Secondary Gemini model on primary failure |
+| `LLM_RETRY_MAX_ATTEMPTS` | `3` | Retries per model on transient errors |
+| `LLM_RETRY_BASE_DELAY_SECONDS` | `0.5` | Initial backoff between retries |
+| `LLM_RETRY_MAX_DELAY_SECONDS` | `8.0` | Max backoff cap |
 | `RAG_STRICT_MODE` | `false` | Strict vs hybrid RAG |
 | `RAG_MAX_DISTANCE` | `0.45` | pgvector relevance threshold |
 | `JWT_SECRET_KEY` | _(dev)_ | Token signing |
@@ -327,7 +353,7 @@ Config: `pytest.ini` · Markers: `unit`, `integration`, `e2e`
 
 | Layer | Folder | Covers |
 | --- | --- | --- |
-| Unit | `tests/unit/` | DTOs, mappers, RAG, JWT, rate limits |
+| Unit | `tests/unit/` | DTOs, mappers, RAG, retry, LLM failover, JWT, rate limits |
 | Integration | `tests/integration/` | Auth, chat, SSE, documents |
 | E2E | `tests/e2e/` | Register → chat smoke |
 
